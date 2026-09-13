@@ -80,6 +80,9 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 
 ## Stretch Goals (do not block v1)
 
+- **User-owned API keys** — each user runs the app against their own provider accounts, not the developer's. Important before showing to anyone else.
+- **Dynamic panel count + provider/model selection** — dropdown to choose how many panels, which provider each one uses, and which specific model (e.g., run GPT-4o vs GPT-4o-mini side by side, or three different Claude models). Enables running one provider against itself across models.
+
 - **RAG / embeddings / vector DB** — embed response chunks and compare semantic similarity to distinguish "these two models essentially agree" from "these answers are making genuinely different claims." This is the *natural* entry point for embeddings in this app — it solves a real problem (accurate consensus/disputed detection) rather than bolting on an unrelated feature like a document chatbot.
 - Authentication
 - Saved debates
