@@ -133,4 +133,22 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - Claude Skills confirmed: Learning Opportunities + Matt Pocock (no Superpowers)
 - CONTEXT.md created
 
-### Next session: finish planning conversation, create GitHub repo, initialize project
+### 2026-09-13 — Session 2 (overnight): Setup
+- Created GitHub repo: https://github.com/thechristobal/llm-roundtable
+- Scaffolded monorepo: client/ (React + TypeScript + Vite) + server/ placeholder
+- Full build done on main branch, tagged snapshot/overnight-v1
+- API keys obtained and stored in server/.env.local (gitignored)
+- Learning Opportunities + Matt Pocock skills installed globally
+
+### 2026-09-13 — Session 3: Workshop branch + types
+- Switched to Learning Opportunities mode going forward
+- Created workshop branch from initial scaffold; overnight build on main as reference
+- Built client/src/types/index.ts:
+  - ProviderID — string union (not ModelID; providers ≠ models)
+  - PanelState — discriminated union on status: idle/loading/complete/error (not ModelResponse)
+  - ProviderConfig — type for provider display/API config
+  - PROVIDERS — Record<ProviderID, ProviderConfig> constant, single source of truth
+- Added stretch goals: user-owned API keys, dynamic panel/provider/model selection
+- Format going forward: write code first, explain after
+
+### Next session: Tailwind setup, then App layout and components
