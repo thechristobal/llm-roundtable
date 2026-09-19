@@ -84,8 +84,9 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - **Dynamic panel count + provider/model selection** — dropdown to choose how many panels, which provider each one uses, and which specific model (e.g., run GPT-4o vs GPT-4o-mini side by side, or three different Claude models). Enables running one provider against itself across models.
 
 - **RAG / embeddings / vector DB** — embed response chunks and compare semantic similarity to distinguish "these two models essentially agree" from "these answers are making genuinely different claims." This is the *natural* entry point for embeddings in this app — it solves a real problem (accurate consensus/disputed detection) rather than bolting on an unrelated feature like a document chatbot.
-- Authentication
-- Saved debates
+- Authentication + login page (required before user-owned API keys can work — users need to authenticate before the app can route requests through their accounts)
+- Saved debates (if saved to user account, should live in a "Roundtable" project/folder in that account)
+- Login/landing page for final product
 - Branching conversations
 - Token/cost tracking
 - Voting / evaluations

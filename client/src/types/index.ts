@@ -11,7 +11,7 @@ export const PROVIDERS: Record<ProviderID, ProviderConfig> = {
   openai: {
     id: 'openai',
     name: 'ChatGPT',
-    model: 'gpt-4o',
+    model: 'gpt-5.6-sol',
     accentColor: '#10a37f',
   },
   anthropic: {
@@ -23,7 +23,7 @@ export const PROVIDERS: Record<ProviderID, ProviderConfig> = {
   google: {
     id: 'google',
     name: 'Gemini',
-    model: 'gemini-1.5-pro',
+    model: 'gemini-3.6-flash',
     accentColor: '#4285f4',
   },
 }
@@ -31,5 +31,7 @@ export const PROVIDERS: Record<ProviderID, ProviderConfig> = {
 export type PanelState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'complete'; content: string }
+  | { status: 'complete'; content: string; rounds: string[] }
   | { status: 'error'; message: string }
+
+export type DebateMode = 'fight' | 'consensus' | 'devils-advocate' | 'fact-check'
