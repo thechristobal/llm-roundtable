@@ -1,49 +1,35 @@
-export type ModelId = 'openai' | 'anthropic' | 'google'
+export type ProviderID = 'openai' | 'anthropic' | 'google'
 
-export interface ModelConfig {
-  id: ModelId
+export type ProviderConfig = {
+  id: ProviderID
   name: string
-  label: string
+  model: string
   accentColor: string
 }
 
-export const MODEL_CONFIGS = {
+export const PROVIDERS: Record<ProviderID, ProviderConfig> = {
   openai: {
     id: 'openai',
     name: 'ChatGPT',
-    label: 'GPT-4o',
+    model: 'gpt-5.6-sol',
     accentColor: '#10a37f',
   },
   anthropic: {
     id: 'anthropic',
     name: 'Claude',
-    label: 'Claude 3.5 Sonnet',
+    model: 'claude-sonnet-4-6',
     accentColor: '#d97757',
   },
   google: {
     id: 'google',
     name: 'Gemini',
-    label: 'Gemini 1.5 Pro',
+    model: 'gemini-3.6-flash',
     accentColor: '#4285f4',
   },
-} as const satisfies Record<ModelId, ModelConfig>
+}
 
-export type MessageStatus = 'idle' | 'loading' | 'streaming' | 'complete' | 'error'
-
-export type ModelResponse =
+export type PanelState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'streaming'; content: string }
-  | { status: 'complete'; content: string }
+  | { status: 'complete'; content: string; durationMs: number }
   | { status: 'error'; message: string }
-
-export type RoundtableResponses = Record<ModelId, ModelResponse>
-
-export interface ChatRequest {
-  prompt: string
-  modelId: ModelId
-}
-
-export interface ChatResponse {
-  content: string
-}

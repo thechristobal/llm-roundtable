@@ -80,13 +80,22 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 
 ## Stretch Goals (do not block v1)
 
+- **User-owned API keys** — each user runs the app against their own provider accounts, not the developer's. Important before showing to anyone else.
+- **Dynamic panel count + provider/model selection** — dropdown to choose how many panels, which provider each one uses, and which specific model (e.g., run GPT-4o vs GPT-4o-mini side by side, or three different Claude models). Enables running one provider against itself across models.
+
 - **RAG / embeddings / vector DB** — embed response chunks and compare semantic similarity to distinguish "these two models essentially agree" from "these answers are making genuinely different claims." This is the *natural* entry point for embeddings in this app — it solves a real problem (accurate consensus/disputed detection) rather than bolting on an unrelated feature like a document chatbot.
-- Authentication
-- Saved debates
+- Authentication + login page (required before user-owned API keys can work — users need to authenticate before the app can route requests through their accounts)
+- Saved debates (if saved to user account, should live in a "Roundtable" project/folder in that account)
+- Login/landing page for final product
 - Branching conversations
+- **Harden positions mode** — action button that tells all models to dig in, disagree harder, and defend their positions more aggressively (contrast with "Seek consensus")
+- **LLM judge panel** — TBD, considering having a model or panel evaluate the debate
 - Token/cost tracking
 - Voting / evaluations
 - User-created panel personas
+- Header subtitle with more personality/branding (currently purely functional)
+- Model icons/logos in panel headers for visual polish
+- **Jev** — flagged by friend as possible feature to investigate
 - Public share links
 - Local model support
 
@@ -100,18 +109,13 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 
 ---
 
-## Setup Checklist
+## Setup Checklist (not yet started as of session 1)
 
-- [x] Create GitHub repo: `https://github.com/thechristobal/llm-roundtable`
-- [x] Initialize project — React + TypeScript (Vite), monorepo with `client/` and `server/`
-- [x] Install Learning Opportunities and Matt Pocock skills globally (`~/.claude/commands/`)
-- [ ] **AWS account** — requires credit card + phone verification, needs you present
-- [ ] **API keys** — Playwright couldn't auto-generate them (consoles have separate sessions from regular logins). You need to do these manually — 2 minutes each:
-  - OpenAI: platform.openai.com → API Keys → Create new secret key
-  - Anthropic: console.anthropic.com → Settings → API Keys → Create Key
-  - Google: aistudio.google.com/apikey → Create API Key (select or create a project)
-  - Once you have them: create `server/.env.local` (already gitignored) using `server/.env.example` as a template
-- [ ] Set up Electron Forge (deferred until UI is stable)
+- [ ] Create GitHub repo: `llm-roundtable`
+- [ ] Set up AWS account
+- [ ] Obtain API keys: OpenAI, Anthropic, Gemini (accounts exist, keys not yet generated)
+- [ ] Initialize project (React + TypeScript)
+- [ ] Set up Electron Forge (deferred)
 
 ---
 
@@ -131,40 +135,26 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - Decided: Lambda TS orchestration first, Step Functions on migration
 - Decided: adapter pattern (not microservices) for provider normalization
 - Decided: streaming is a planned early feature, not a day-one gate
-- Decided: RAG/embeddings/vector DB → stretch goal (natural entry: embed response chunks to detect genuine disagreement vs. paraphrase)
+- Decided: RAG/embeddings/vector DB → stretch goal
 - Claude Skills confirmed: Learning Opportunities + Matt Pocock (no Superpowers)
 - CONTEXT.md created
 
-### 2026-09-13 — Session 2: Overnight build
-- Created GitHub repo: `https://github.com/thechristobal/llm-roundtable` (via Playwright + Opera)
-- Scaffolded monorepo: `client/` (React + TypeScript + Vite + Tailwind v4) + `server/` (Express + TypeScript)
-- **Frontend built:**
-  - `client/src/types/index.ts` — shared types using discriminated union for `ModelResponse`, `satisfies` for model configs
-  - `client/src/components/ModelPanel.tsx` — per-model response card with loading skeleton, streaming cursor, error state
-  - `client/src/components/PromptInput.tsx` — textarea with Enter-to-submit, Shift+Enter for newline
-  - `client/src/hooks/useRoundtable.ts` — state management, fires all 3 API calls via `Promise.allSettled` in parallel
-  - `client/src/App.tsx` — three-column layout, header with Clear button, sticky prompt footer
-  - Tailwind v4 with custom CSS variables for model accent colors
-- **Server built:**
-  - `server/src/adapters/openai.ts` — OpenAI GPT-4o adapter
-  - `server/src/adapters/anthropic.ts` — Anthropic Claude Sonnet adapter
-  - `server/src/adapters/google.ts` — Google Gemini 1.5 Pro adapter
-  - `server/src/routes/chat.ts` — POST /api/chat, falls back to labeled mock responses if API key missing
-  - `server/src/index.ts` — Express app on port 3001, logs which keys are present at startup
-  - Vite proxy configured: `/api` → `http://localhost:3001` during dev
-- Installed Learning Opportunities + Matt Pocock skills globally
-- API keys: Playwright attempted but all 3 consoles require separate login sessions. **Manual generation needed** (see Setup Checklist)
-- Both client and server pass `tsc --noEmit` clean
-- All pushed to GitHub
+### 2026-09-13 — Session 2 (overnight): Setup
+- Created GitHub repo: https://github.com/thechristobal/llm-roundtable
+- Scaffolded monorepo: client/ (React + TypeScript + Vite) + server/ placeholder
+- Full build done on main branch, tagged snapshot/overnight-v1
+- API keys obtained and stored in server/.env.local (gitignored)
+- Learning Opportunities + Matt Pocock skills installed globally
 
-### Next session: generate API keys, run the app for the first time, verify mock → real responses
+### 2026-09-13 — Session 3: Workshop branch + types
+- Switched to Learning Opportunities mode going forward
+- Created workshop branch from initial scaffold; overnight build on main as reference
+- Built client/src/types/index.ts:
+  - ProviderID — string union (not ModelID; providers ≠ models)
+  - PanelState — discriminated union on status: idle/loading/complete/error (not ModelResponse)
+  - ProviderConfig — type for provider display/API config
+  - PROVIDERS — Record<ProviderID, ProviderConfig> constant, single source of truth
+- Added stretch goals: user-owned API keys, dynamic panel/provider/model selection
+- Format going forward: write code first, explain after
 
-### To run the app right now (mock mode, no keys needed):
-```
-# Terminal 1 — backend
-cd server && npm run dev
-
-# Terminal 2 — frontend
-cd client && npm run dev
-# Open http://localhost:5173
-```
+### Next session: Tailwind setup, then App layout and components

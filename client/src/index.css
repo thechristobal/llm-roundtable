@@ -1,15 +1,5 @@
 @import "tailwindcss";
-
-@theme {
-  --color-openai: #10a37f;
-  --color-anthropic: #d97757;
-  --color-google: #4285f4;
-  --color-surface: #111118;
-  --color-card: #17171f;
-  --color-card-hover: #1e1e28;
-  --color-border: #2a2a38;
-  --color-muted: #6b7280;
-}
+@plugin "@tailwindcss/typography";
 
 * {
   box-sizing: border-box;
@@ -20,7 +10,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: var(--color-surface);
+  background: #111118;
   font-family: system-ui, -apple-system, sans-serif;
   color: #e8e8f0;
   -webkit-font-smoothing: antialiased;

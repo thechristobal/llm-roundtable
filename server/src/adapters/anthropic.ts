@@ -1,14 +1,28 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+export async function askAnthropic(prompt: string, systemPrompt?: string): Promise<string> {
+  let text = ''
 
-export async function askAnthropic(prompt: string): Promise<string> {
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
+  const stream = query({
+    prompt,
+    options: {
+      allowedTools: [],
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+      systemPrompt,
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([k]) => k !== 'ANTHROPIC_API_KEY')
+      ) as Record<string, string>,
+    },
   })
 
-  const block = response.content[0]
-  return block.type === 'text' ? block.text : ''
+  for await (const message of stream) {
+    if (message.type === 'assistant') {
+      for (const block of message.message.content) {
+        if (block.type === 'text') text += block.text
+      }
+    }
+  }
+
+  return text
 }
