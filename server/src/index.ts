@@ -4,7 +4,7 @@ import express from 'express'
 import { askAnthropic } from './adapters/anthropic.js'
 import { askGoogle } from './adapters/google.js'
 import { askOpenAI } from './adapters/openai.js'
-import { buildRebuttalPrompt, buildSystemPrompt } from './systemPrompt.js'
+import { buildSystemPrompt } from './systemPrompt.js'
 
 const ALL_PROVIDERS = ['openai', 'anthropic', 'google']
 
@@ -36,53 +36,14 @@ app.post('/api/ask', async (req, res) => {
 
     res.json({ content })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    res.status(500).json({ error: message })
-  }
-})
-
-app.post('/api/debate/round', async (req, res) => {
-  const { prompt, responses } = req.body as {
-    prompt: string
-    responses: Record<string, string>
-  }
-
-  if (!prompt || !responses) {
-    res.status(400).json({ error: 'prompt and responses are required' })
-    return
-  }
-
-  const results = await Promise.allSettled(
-    ALL_PROVIDERS.map(async provider => {
-      const rebuttalPrompt = buildRebuttalPrompt(provider, ALL_PROVIDERS, prompt, responses)
-      let content: string
-
-      if (provider === 'openai') {
-        content = await askOpenAI(rebuttalPrompt)
-      } else if (provider === 'anthropic') {
-        content = await askAnthropic(rebuttalPrompt)
-      } else {
-        content = await askGoogle(rebuttalPrompt)
-      }
-
-      return { provider, content }
-    })
-  )
-
-  const roundResponses: Record<string, string | null> = {}
-  const errors: Record<string, string> = {}
-
-  ALL_PROVIDERS.forEach((provider, i) => {
-    const result = results[i]
-    if (result.status === 'fulfilled') {
-      roundResponses[provider] = result.value.content
+    console.error(`[${provider}] Error:`, err)
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.startsWith('QUOTA_EXCEEDED:')) {
+      res.status(429).json({ error: 'Quota exhausted — free tier limit reached. Try again tomorrow or upgrade your API key.' })
     } else {
-      roundResponses[provider] = null
-      errors[provider] = result.reason instanceof Error ? result.reason.message : 'Unknown error'
+      res.status(500).json({ error: message || 'Unknown error' })
     }
-  })
-
-  res.json({ responses: roundResponses, errors })
+  }
 })
 
 const port = process.env.PORT ?? 3001

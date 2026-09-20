@@ -88,9 +88,14 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - Saved debates (if saved to user account, should live in a "Roundtable" project/folder in that account)
 - Login/landing page for final product
 - Branching conversations
+- **Harden positions mode** — action button that tells all models to dig in, disagree harder, and defend their positions more aggressively (contrast with "Seek consensus")
+- **LLM judge panel** — TBD, considering having a model or panel evaluate the debate
 - Token/cost tracking
 - Voting / evaluations
 - User-created panel personas
+- Header subtitle with more personality/branding (currently purely functional)
+- Model icons/logos in panel headers for visual polish
+- **Jev** — flagged by friend as possible feature to investigate
 - Public share links
 - Local model support
 

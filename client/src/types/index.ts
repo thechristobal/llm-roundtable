@@ -31,7 +31,5 @@ export const PROVIDERS: Record<ProviderID, ProviderConfig> = {
 export type PanelState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'complete'; content: string; rounds: string[] }
+  | { status: 'complete'; content: string; durationMs: number }
   | { status: 'error'; message: string }
-
-export type DebateMode = 'fight' | 'consensus' | 'devils-advocate' | 'fact-check'
