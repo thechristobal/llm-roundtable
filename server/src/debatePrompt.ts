@@ -97,7 +97,7 @@ Do not ask the user questions. End your response definitively.`
 
   return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}.
 
-The full debate history is below. You can now read everything your competitors have written in all previous rounds.
+The full debate history is below. You can now read everything your competitors have written in all previous rounds. Treat concessions and withdrawals from prior rounds as binding unless the opponent later reverses them. Do not attack a superseded position.
 ${eliminationNote}
 ${history}
 

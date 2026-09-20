@@ -145,6 +145,7 @@ export const htmlExporter: Exporter = {
     const roundHtmls = await Promise.all(rounds.map((r, i) => renderRound(r, i)))
     const dateStr = exportedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     const timeStr = exportedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const dataJson = JSON.stringify(rounds)
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -155,6 +156,7 @@ export const htmlExporter: Exporter = {
   <style>${CSS}</style>
 </head>
 <body>
+  <script type="application/json" id="roundtable-data">${dataJson}</script>
   <header>
     <h1>LLM Roundtable</h1>
     <p>Exported ${dateStr} at ${timeStr} · ${rounds.length} round${rounds.length !== 1 ? 's' : ''}</p>

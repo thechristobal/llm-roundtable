@@ -4,6 +4,7 @@ import DebateBar from './components/DebateBar'
 import ErrorBoundary from './components/ErrorBoundary'
 import ProviderPanel from './components/ProviderPanel'
 import { downloadDebate } from './export'
+import { importDebate } from './export/importDebate'
 import { type DebateAction, type PanelState, type ProviderID, type Round } from './types'
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
@@ -88,6 +89,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const latestRound = rounds[rounds.length - 1] ?? null
   const isLoading = latestRound !== null &&
@@ -98,6 +100,22 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [rounds])
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    if (rounds.length > 0 && !window.confirm('Replace the current debate with the imported one?')) return
+
+    try {
+      const imported = await importDebate(file)
+      setRounds(imported)
+      setPrompt('')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Import failed.')
+    }
+  }
 
   function handleReset() {
     setRounds([])
@@ -246,22 +264,37 @@ export default function App() {
             Ask ChatGPT, Claude, and Gemini simultaneously
           </p>
         </div>
-        {rounds.length > 0 && (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => downloadDebate('html', rounds)}
-              className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"
-            >
-              Export
-            </button>
-            <button
-              onClick={handleReset}
-              className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"
-            >
-              Clear
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".html"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"
+          >
+            Import
+          </button>
+          {rounds.length > 0 && (
+            <>
+              <button
+                onClick={() => downloadDebate('html', rounds)}
+                className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"
+              >
+                Export
+              </button>
+              <button
+                onClick={handleReset}
+                className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"
+              >
+                Clear
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 min-h-0">
