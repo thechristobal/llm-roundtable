@@ -1,16 +1,21 @@
+import 'katex/dist/katex.min.css'
+import rehypeKatex from 'rehype-katex'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 import { PROVIDERS, type PanelState, type ProviderID } from '../types'
 
 type Props = {
   providerId: ProviderID
   state: PanelState
+  onReroll?: () => void
 }
 
 function formatDuration(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
 }
 
-export default function ProviderPanel({ providerId, state }: Props) {
+export default function ProviderPanel({ providerId, state, onReroll }: Props) {
   const provider = PROVIDERS[providerId]
 
   return (
@@ -42,18 +47,39 @@ export default function ProviderPanel({ providerId, state }: Props) {
         )}
         {state.status === 'complete' && (
           <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown>{state.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+              {state.content}
+            </ReactMarkdown>
           </div>
         )}
         {state.status === 'error' && (
-          state.message.toLowerCase().includes('quota') ? (
-            <p className="text-amber-400">
-              Quota exhausted<br />
-              <span className="text-[#6b7280] text-xs">Free tier limit reached. Try again tomorrow or upgrade your API key.</span>
-            </p>
-          ) : (
-            <p className="text-red-400">{state.message}</p>
-          )
+          <div className="flex flex-col gap-3">
+            {state.message.toLowerCase().includes('quota') ? (
+              <div>
+                <p className="text-amber-400 font-medium">Quota exhausted — {provider.name} is out</p>
+                <p className="text-[#6b7280] text-xs mt-1">
+                  Free tier limit reached. The other models will continue the debate without {provider.name}.
+                </p>
+              </div>
+            ) : state.message.toLowerCase().includes('high demand') ? (
+              <div>
+                <p className="text-yellow-400 font-medium">High demand</p>
+                <p className="text-[#6b7280] text-xs mt-1">
+                  {provider.name} is overloaded. Retry or continue the debate without it.
+                </p>
+              </div>
+            ) : (
+              <p className="text-red-400">{state.message}</p>
+            )}
+            {onReroll && (
+              <button
+                onClick={onReroll}
+                className="self-start text-xs text-[#6b7280] hover:text-[#c9c9d8] border border-[#2a2a38] hover:border-[#3a3a50] rounded px-2 py-1 transition-colors"
+              >
+                ↺ Retry
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
