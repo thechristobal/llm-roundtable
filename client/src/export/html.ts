@@ -70,6 +70,7 @@ function roundLabel(round: Round): { text: string; cls: string } | null {
   if (round.trigger === 'initial' && round.prompt) return { text: `— ${round.prompt}`, cls: 'trigger-initial' }
   if (round.trigger === 'follow_up' && round.prompt) return { text: `— Follow-up: ${round.prompt}`, cls: 'trigger-followup' }
   if (round.trigger === 'fight') return { text: '— Fight', cls: 'trigger-fight' }
+  if (round.trigger === 'seek_consensus') return { text: '— Seek Consensus', cls: 'trigger-consensus' }
   return null
 }
 
@@ -103,6 +104,7 @@ header p { font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; }
 .round-label { font-size: 0.75rem; }
 .trigger-initial { color: #4a4a5a; }
 .trigger-fight { color: #f87171; }
+.trigger-consensus { color: #34d399; }
 .trigger-followup { color: #818cf8; }
 .panels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
 .panel { background: #17171f; border: 1px solid #2a2a38; border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }

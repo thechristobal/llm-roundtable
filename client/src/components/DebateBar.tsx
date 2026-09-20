@@ -11,6 +11,11 @@ const ACTIONS: { action: DebateAction; label: string; className: string }[] = [
     label: 'Fight about this',
     className: 'border-red-800 text-red-400 hover:bg-red-900/20',
   },
+  {
+    action: 'seek_consensus',
+    label: 'Seek consensus',
+    className: 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20',
+  },
 ]
 
 export default function DebateBar({ onAction, disabled }: Props) {

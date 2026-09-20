@@ -91,6 +91,7 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - **Harden positions mode** — debate action button: models dig in, disagree harder, defend positions more aggressively
 - **Seek consensus mode** — opposite of harden positions: models look for common ground, make concessions, converge toward agreement
 - **Jev as judge** — Jev takes the LLM judge panel role; evaluates the debate and declares a winner or renders a verdict
+- **Jev passive consensus detection** — after each round, Jev scans responses and surfaces per-topic agreement/disagreement indicators ("these two agree on X", "disputed: Y"). Natural precursor to the RAG/embeddings stretch goal.
 - **Provider abstention classification** — detect when a model declines or partially refuses due to policy constraints; represent as `responseStatus: 'abstained'` distinct from `error`; judges (Jev) should distinguish abstention from low-quality reasoning when scoring
 - Token/cost tracking
 - Voting / evaluations

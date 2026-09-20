@@ -34,7 +34,7 @@ export type PanelState =
   | { status: 'complete'; content: string; durationMs: number }
   | { status: 'error'; message: string }
 
-export type DebateAction = 'fight' | 'follow_up'
+export type DebateAction = 'fight' | 'follow_up' | 'seek_consensus'
 
 export type Round = {
   trigger: 'initial' | DebateAction

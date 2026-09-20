@@ -4,7 +4,7 @@ const MODEL_NAMES: Record<string, string> = {
   google: 'Gemini',
 }
 
-export type DebateAction = 'fight' | 'follow_up'
+export type DebateAction = 'fight' | 'follow_up' | 'seek_consensus'
 
 export type DebateRound = {
   trigger: 'initial' | DebateAction
@@ -58,7 +58,20 @@ export function buildDebateSystemPrompt(
 
   const absentRule = `Do not comment on an unavailable competitor merely because they failed to respond. The UI handles provider status. Only discuss that competitor if a substantive argument from an earlier round remains relevant.`
 
-  if (action === 'fight') {
+  if (action === 'seek_consensus') {
+    taskDirective = `=== Your Task — SEEK CONSENSUS ===
+
+The user has asked the panel to find common ground. Your goal is to converge, not to win.
+
+- Identify the claims or positions where you and your competitors genuinely agree. State them plainly.
+- For points where you have previously disagreed: look for the kernel of truth in the other side. Acknowledge it explicitly.
+- Make concessions where the evidence or reasoning warrants them. Changing your position when faced with a better argument is strength, not weakness.
+- If you still hold a position after honest consideration, say so briefly — but do not defend it combatively. Frame it as an open question rather than a firm conclusion.
+- End with a short summary of where the panel appears to have landed and what, if anything, remains genuinely unresolved.
+- ${absentRule}
+
+Do not ask the user questions. End your response definitively.`
+  } else if (action === 'fight') {
     taskDirective = `=== Your Task — FIGHT ===
 
 The user has called for a fight round. Challenge the other models directly.

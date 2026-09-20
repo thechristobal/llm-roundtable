@@ -56,6 +56,7 @@ function PromptLabel({ prompt, trigger }: { prompt: string; trigger: Round['trig
   }, [prompt])
 
   if (trigger === 'fight') return <span className="text-xs text-red-400">— Fight</span>
+  if (trigger === 'seek_consensus') return <span className="text-xs text-emerald-400">— Seek Consensus</span>
 
   const color = trigger === 'follow_up' ? 'text-indigo-400' : 'text-[#4a4a5a]'
   const label = trigger === 'follow_up' ? `Follow-up: ${prompt}` : prompt
