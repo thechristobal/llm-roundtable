@@ -80,7 +80,7 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 
 ## Stretch Goals (do not block v1)
 
-- **User-owned API keys** — each user runs the app against their own provider accounts, not the developer's. Important before showing to anyone else.
+- **User-owned API keys** — users download and run locally, pointing the app at their own `.env` file. No key entry UI. Important before sharing with anyone.
 - **Dynamic panel count + provider/model selection** — dropdown to choose how many panels, which provider each one uses, and which specific model (e.g., run GPT-4o vs GPT-4o-mini side by side, or three different Claude models). Enables running one provider against itself across models.
 
 - **RAG / embeddings / vector DB** — embed response chunks and compare semantic similarity to distinguish "these two models essentially agree" from "these answers are making genuinely different claims." This is the *natural* entry point for embeddings in this app — it solves a real problem (accurate consensus/disputed detection) rather than bolting on an unrelated feature like a document chatbot.
@@ -88,14 +88,19 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - Saved debates (if saved to user account, should live in a "Roundtable" project/folder in that account)
 - Login/landing page for final product
 - Branching conversations
-- **Harden positions mode** — action button that tells all models to dig in, disagree harder, and defend their positions more aggressively (contrast with "Seek consensus")
-- **LLM judge panel** — TBD, considering having a model or panel evaluate the debate
+- **Harden positions mode** — debate action button: models dig in, disagree harder, defend positions more aggressively
+- **Seek consensus mode** — opposite of harden positions: models look for common ground, make concessions, converge toward agreement
+- **Jev as judge** — Jev takes the LLM judge panel role; evaluates the debate and declares a winner or renders a verdict
+- **Jev passive consensus detection** — after each round, Jev scans responses and surfaces per-topic agreement/disagreement indicators ("these two agree on X", "disputed: Y"). Natural precursor to the RAG/embeddings stretch goal.
+- **Provider abstention classification** — detect when a model declines or partially refuses due to policy constraints; represent as `responseStatus: 'abstained'` distinct from `error`; judges (Jev) should distinguish abstention from low-quality reasoning when scoring
 - Token/cost tracking
 - Voting / evaluations
 - User-created panel personas
 - Header subtitle with more personality/branding (currently purely functional)
 - Model icons/logos in panel headers for visual polish
-- **Jev** — flagged by friend as possible feature to investigate
+- **Export debate to file** — ✓ built (HTML with KaTeX; markdown/JSON formats extensible via exporter registry)
+- **Import debate from file** — load a previously exported HTML/JSON debate to continue or review it
+- **Jev** — judge panel role (see above)
 - Public share links
 - Local model support
 
@@ -157,4 +162,19 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - Added stretch goals: user-owned API keys, dynamic panel/provider/model selection
 - Format going forward: write code first, explain after
 
-### Next session: Tailwind setup, then App layout and components
+### 2026-09-14 — Session 4: Server, UI polish, export
+
+- Built Express server (server/src/index.ts): /api/ask (initial) + /api/debate/ask (per-provider debate)
+- Adapter pattern: openai.ts, anthropic.ts, google.ts; unified LLMAdapter interface
+- Built debate prompt system (debatePrompt.ts): history blocks, fight/follow_up directives, elimination tracking
+- Gemini error handling: 6 retries, QUOTA_EXCEEDED (429) and GEMINI_OVERLOADED (503) prefixes, distinct UI treatment
+- UI: rounds state, per-panel scroll (h-96 grid), PromptLabel with line-clamp + expand, DebateBar (fight action)
+- Retry button on error panels for current round only
+- HTML export with offline KaTeX (base64 woff2), exporter registry pattern
+- Per-panel progressive reveal: panels update as each fetch resolves, don't wait for all three
+- Added remark-gfm for table support in ProviderPanel and HTML export
+- Round numbering: "Opening Statements" for initial round, "Round N" for debate rounds
+- Absent-model rule added to debate prompts
+- Provider abstention classification added to stretch goals
+
+### Next session: Seek consensus action, import feature, or DebateBar polish

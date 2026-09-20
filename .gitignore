@@ -7,6 +7,9 @@ server/node_modules/
 client/dist/
 server/dist/
 
+# Generated files — re-run scripts to rebuild
+client/src/export/katex-inlined.ts
+
 # Environment variables — NEVER commit these
 .env
 .env.local

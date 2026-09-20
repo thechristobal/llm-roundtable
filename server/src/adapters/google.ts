@@ -16,7 +16,7 @@ async function attempt(prompt: string, systemPrompt?: string): Promise<string> {
 }
 
 export async function askGoogle(prompt: string, systemPrompt?: string): Promise<string> {
-  const maxRetries = 4
+  const maxRetries = 6
   let lastError: unknown
 
   for (let i = 0; i < maxRetries; i++) {
@@ -26,13 +26,16 @@ export async function askGoogle(prompt: string, systemPrompt?: string): Promise<
       lastError = err
       const msg = err instanceof Error ? err.message : String(err)
       const isQuota = /429|quota|RESOURCE_EXHAUSTED/i.test(msg)
-      const isPermanent = isQuota || /4\d\d|invalid|not found|unauthorized|forbidden/i.test(msg)
+      const isOverloaded = /503|overloaded|high demand|service unavailable/i.test(msg)
+      const isPermanent = isQuota || (!isOverloaded && /4\d\d|invalid|not found|unauthorized|forbidden/i.test(msg))
       if (isPermanent || i === maxRetries - 1) {
         if (isQuota) throw new Error(`QUOTA_EXCEEDED: ${msg}`)
+        if (isOverloaded) throw new Error(`GEMINI_OVERLOADED: ${msg}`)
         throw err
       }
-      console.warn(`Gemini error, retrying (attempt ${i + 1}/${maxRetries}): ${msg}`)
-      await new Promise(r => setTimeout(r, 1500 * (i + 1)))
+      const delay = isOverloaded ? 3000 * (i + 1) : 1500 * (i + 1)
+      console.warn(`Gemini error, retrying in ${delay}ms (attempt ${i + 1}/${maxRetries}): ${msg}`)
+      await new Promise(r => setTimeout(r, delay))
     }
   }
 
