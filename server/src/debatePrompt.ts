@@ -95,7 +95,7 @@ ${absentRule}
 Do not ask the user questions. End your response definitively.`
   }
 
-  return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}.
+  return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}. When writing math, use $$ for inline expressions and a fenced \`\`\`math block for display equations — do not use single $, as it conflicts with currency symbols.
 
 The full debate history is below. You can now read everything your competitors have written in all previous rounds. Treat concessions and withdrawals from prior rounds as binding unless the opponent later reverses them. Do not attack a superseded position.
 ${eliminationNote}

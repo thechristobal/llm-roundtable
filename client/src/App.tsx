@@ -26,8 +26,8 @@ async function fetchFromEndpoint(url: string, body: object): Promise<{ content: 
     const errData = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(errData.error ?? `HTTP ${res.status}`)
   }
-  const data = await res.json() as { content: string }
-  return { content: data.content, durationMs: Date.now() - start }
+  const data = await res.json() as { content: string; model?: string }
+  return { content: data.content, model: data.model, durationMs: Date.now() - start }
 }
 
 function toDebateRounds(rounds: Round[]) {
@@ -156,7 +156,7 @@ export default function App() {
           : await fetchFromEndpoint('/api/ask', { provider: id, prompt: trimmed })
         setRounds(prev => {
           const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs } } }
+          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model } } }
           return next
         })
       } catch (err) {
@@ -185,7 +185,7 @@ export default function App() {
         const result = await fetchFromEndpoint('/api/debate/ask', { provider: id, action, rounds: debateRounds })
         setRounds(prev => {
           const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs } } }
+          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model } } }
           return next
         })
       } catch (err) {
@@ -227,7 +227,7 @@ export default function App() {
           ...next[roundIdx],
           panels: {
             ...next[roundIdx].panels,
-            [id]: { status: 'complete', content: result.content, durationMs: result.durationMs },
+            [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model },
           },
         }
         return next

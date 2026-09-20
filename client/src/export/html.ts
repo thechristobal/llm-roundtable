@@ -16,7 +16,7 @@ async function md2html(content: string): Promise<string> {
   const result = await unified()
     .use(remarkParse)
     .use(remarkGfm)
-    .use(remarkMath)
+    .use(remarkMath, { singleDollarTextMath: false })
     .use(remarkRehype)
     .use(rehypeKatex)
     .use(rehypeStringify)

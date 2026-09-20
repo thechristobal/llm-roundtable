@@ -1,11 +1,19 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 
+export const MODEL = 'claude-sonnet-4-6'
+export const KNOWN_WORKING_MODELS: readonly string[] = [
+  'claude-haiku-4-5-20251001',
+  'claude-sonnet-4-6',
+  'claude-opus-4-7',
+]
+
 export async function askAnthropic(prompt: string, systemPrompt?: string): Promise<string> {
   let text = ''
 
   const stream = query({
     prompt,
     options: {
+      model: MODEL,
       allowedTools: [],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,

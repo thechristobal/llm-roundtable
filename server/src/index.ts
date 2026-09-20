@@ -1,9 +1,15 @@
 import dotenv from 'dotenv'
 dotenv.config({ path: '.env.local' })
 import express from 'express'
-import { askAnthropic } from './adapters/anthropic.js'
-import { askGoogle } from './adapters/google.js'
-import { askOpenAI } from './adapters/openai.js'
+import { askAnthropic, MODEL as ANTHROPIC_MODEL } from './adapters/anthropic.js'
+import { askGoogle, MODEL as GOOGLE_MODEL } from './adapters/google.js'
+import { askOpenAI, MODEL as OPENAI_MODEL } from './adapters/openai.js'
+
+const PROVIDER_MODELS: Record<string, string> = {
+  openai: OPENAI_MODEL,
+  anthropic: ANTHROPIC_MODEL,
+  google: GOOGLE_MODEL,
+}
 import { buildDebateSystemPrompt, type DebateAction, type DebateRound } from './debatePrompt.js'
 import { buildSystemPrompt } from './systemPrompt.js'
 
@@ -35,7 +41,7 @@ app.post('/api/ask', async (req, res) => {
       return
     }
 
-    res.json({ content })
+    res.json({ content, model: PROVIDER_MODELS[provider] })
   } catch (err) {
     console.error(`[${provider}] Error:`, err)
     const message = err instanceof Error ? err.message : String(err)
@@ -72,7 +78,7 @@ app.post('/api/debate/ask', async (req, res) => {
       return
     }
 
-    res.json({ content })
+    res.json({ content, model: PROVIDER_MODELS[provider] })
   } catch (err) {
     console.error(`[debate/${provider}] Error:`, err)
     const message = err instanceof Error ? err.message : String(err)

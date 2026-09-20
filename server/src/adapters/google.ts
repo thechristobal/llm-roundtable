@@ -6,9 +6,16 @@ function getClient() {
   return client
 }
 
+export const MODEL = 'gemini-3.6-flash'
+export const KNOWN_WORKING_MODELS: readonly string[] = [
+  'gemini-3.6-flash',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+]
+
 async function attempt(prompt: string, systemPrompt?: string): Promise<string> {
   const model = getClient().getGenerativeModel({
-    model: 'gemini-3.6-flash',
+    model: MODEL,
     ...(systemPrompt ? { systemInstruction: systemPrompt } : {}),
   })
   const result = await model.generateContent(prompt)
