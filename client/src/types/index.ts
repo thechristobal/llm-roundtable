@@ -36,12 +36,14 @@ export type JevDimScore = { score: number; confidence: number }
 
 export type JevProviderRound = {
   reasoning: JevDimScore
-  rebuttal: JevDimScore
   coherence: JevDimScore
   evidence: JevDimScore
   honesty: JevDimScore
-  spirit: JevDimScore
+  relevance: { noul: number; confidence: number }
   overall: number
+  eqAnchored: boolean
+  fabricationDetected: boolean
+  contradictionDetected: boolean
 }
 
 export type JevRoundResult =

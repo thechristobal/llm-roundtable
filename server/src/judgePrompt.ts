@@ -49,12 +49,15 @@ export function buildRoundQuestions(activeProviders: string[], isInitial: boolea
       criteria: SCORE_RUBRIC,
     }
 
-    questions[`${p}_rebuttal`] = {
-      type: 'score',
+    questions[`${p}_relevance`] = {
+      type: 'noul',
       instructions: isInitial
-        ? `Rate how well ${name} engaged with the original prompt — depth, relevance, and directness of response.`
-        : `Rate how well ${name} responded to and engaged with the other models' specific arguments in this round.`,
-      criteria: SCORE_RUBRIC,
+        ? `Did ${name} fail to address the user's prompt — sidestepping, deflecting, or substituting a different question rather than answering directly?`
+        : `Did ${name} fail to respond to the user's prompt or the other models' specific arguments — ignoring what was asked or said, talking past opponents, or evading the actual question?`,
+      criteria: {
+        true: 'Yes — the response sidesteps, deflects, or fails to engage with what was actually asked or argued',
+        false: 'No — the response directly addresses the prompt and/or the opponents\' arguments',
+      },
     }
 
     questions[`${p}_coherence`] = {
@@ -65,8 +68,35 @@ export function buildRoundQuestions(activeProviders: string[], isInitial: boolea
 
     questions[`${p}_evidence`] = {
       type: 'score',
-      instructions: `Rate ${name}'s evidence discipline — does it make claims proportionate to what it can actually support, avoiding overclaiming or unsupported assertions?`,
+      instructions: `Rate the quality of evidence or empirical claims in ${name}'s response. Use 5 as neutral (no evidence deployed). Score above 5 for accurate, specific, well-supported claims — citation not required, accuracy and specificity are the bar. Score above neutral even for accurate specific claims stated without citation. Score below 5 for weak, vague ("studies show..." with no precision), inaccurate, or fabricated evidence. This score may be overridden by the system if no evidentiary burden was incurred.`,
       criteria: SCORE_RUBRIC,
+    }
+
+    questions[`${p}_eq_burden`] = {
+      type: 'noul',
+      instructions: `Did ${name}'s argument depend on factual claims such that the conclusion would materially weaken if those claims were false? Load-bearing factual premises include statistics, historical facts, scientific findings, research results, benchmarks, or claims about current events. Purely conceptual, deductive, or analytical arguments with no load-bearing factual premises should return false.`,
+      criteria: {
+        true: 'Yes — the argument relies on load-bearing factual claims; if false, the argument materially weakens',
+        false: 'No — the argument is primarily conceptual, deductive, or analytical; no factual claim is load-bearing',
+      },
+    }
+
+    questions[`${p}_fabrication`] = {
+      type: 'noul',
+      instructions: `Did ${name} fabricate or materially misrepresent evidence — inventing quotations, statistics, studies, citations, or findings that do not exist or were substantially falsified? Ordinary factual mistakes, disputed interpretations, and minor citation errors are NOT fabrication.`,
+      criteria: {
+        true: 'Yes — contains invented or materially misrepresented evidence central to the argument',
+        false: 'No — no fabrication detected; any errors appear to be genuine mistakes rather than invented material',
+      },
+    }
+
+    questions[`${p}_contradiction`] = {
+      type: 'noul',
+      instructions: `Did ${name}'s response contain a material internal contradiction — asserting two claims that directly undermine each other in a way that damages the argument's validity? Minor nuance, hedging, or tension that is adequately explained is NOT a contradiction.`,
+      criteria: {
+        true: 'Yes — contains a material self-contradiction that undermines the argument\'s validity',
+        false: 'No — the argument is internally consistent or any apparent tension is adequately resolved',
+      },
     }
 
     questions[`${p}_honesty`] = {
@@ -75,11 +105,6 @@ export function buildRoundQuestions(activeProviders: string[], isInitial: boolea
       criteria: SCORE_RUBRIC,
     }
 
-    questions[`${p}_spirit`] = {
-      type: 'score',
-      instructions: `Rate ${name}'s spirit of the debate — did it contribute substantively, engage constructively with others, and advance the discussion rather than talking past competitors?`,
-      criteria: SCORE_RUBRIC,
-    }
   }
 
   return questions

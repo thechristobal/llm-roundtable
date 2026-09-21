@@ -124,18 +124,43 @@ app.post('/api/judge/round', async (req, res) => {
     const questions = buildRoundQuestions(activeProviders, isInitial)
     const { answers, mock } = await queryJev({ state, model: 'jev-latest', questions })
 
-    const dims = ['reasoning', 'rebuttal', 'coherence', 'evidence', 'honesty', 'spirit'] as const
+    const dims = ['reasoning', 'coherence', 'evidence', 'honesty'] as const
+    const WEIGHTS = { reasoning: 0.35, honesty: 0.28, evidence: 0.20, coherence: 0.17 } as const
     const providers: Record<string, unknown> = {}
 
     for (const p of activeProviders) {
-      const dimScores = Object.fromEntries(
+      const dimScores: Record<string, { score: number; confidence: number }> = Object.fromEntries(
         dims.map(d => [d, {
           score: jevScore(answers[`${p}_${d}`]?.score),
           confidence: answers[`${p}_${d}`]?.confidence ?? 0,
         }])
       )
-      const overall = Math.round(dims.reduce((sum, d) => sum + (dimScores[d] as { score: number }).score, 0) / dims.length * 10) / 10
-      providers[p] = { ...dimScores, overall }
+
+      const eqAnchored = (answers[`${p}_eq_burden`]?.noul ?? 0) < 0.5
+      const fabricationDetected = (answers[`${p}_fabrication`]?.noul ?? 0) >= 0.5
+      const contradictionDetected = (answers[`${p}_contradiction`]?.noul ?? 0) >= 0.5
+
+      if (eqAnchored) dimScores.evidence = { ...dimScores.evidence, score: 5.0 }
+      if (fabricationDetected) {
+        dimScores.evidence = { ...dimScores.evidence, score: Math.min(dimScores.evidence.score, 1.0) }
+        dimScores.honesty = { ...dimScores.honesty, score: Math.min(dimScores.honesty.score, 3.0) }
+      }
+      if (contradictionDetected) {
+        dimScores.coherence = { ...dimScores.coherence, score: Math.min(dimScores.coherence.score, 1.0) }
+      }
+
+      const overall = Math.round(
+        (dimScores.reasoning.score * WEIGHTS.reasoning +
+         dimScores.honesty.score * WEIGHTS.honesty +
+         dimScores.evidence.score * WEIGHTS.evidence +
+         dimScores.coherence.score * WEIGHTS.coherence) * 10
+      ) / 10
+
+      const relevance = {
+        noul: answers[`${p}_relevance`]?.noul ?? 0,
+        confidence: answers[`${p}_relevance`]?.confidence ?? 0,
+      }
+      providers[p] = { ...dimScores, relevance, overall, eqAnchored, fabricationDetected, contradictionDetected }
     }
 
     res.json({ providers, mock: mock ?? false })

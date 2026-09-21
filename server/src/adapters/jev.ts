@@ -29,9 +29,9 @@ export type JevResponse = {
 
 // Varied but stable mock scores on Jev's 0–9 scale (server adds 1 → displays as 1–10)
 const MOCK_SCORES: Record<string, Record<string, number>> = {
-  openai:    { reasoning: 4.8, rebuttal: 4.4, coherence: 5.2, evidence: 4.6, honesty: 5.0, spirit: 4.9, overall: 4.8 },
-  anthropic: { reasoning: 5.8, rebuttal: 5.4, coherence: 6.1, evidence: 5.5, honesty: 6.2, spirit: 5.6, overall: 5.8 },
-  google:    { reasoning: 4.2, rebuttal: 4.6, coherence: 4.4, evidence: 4.0, honesty: 4.5, spirit: 4.3, overall: 4.3 },
+  openai:    { reasoning: 4.8, coherence: 5.2, evidence: 4.6, honesty: 5.0, overall: 4.8 },
+  anthropic: { reasoning: 5.8, coherence: 6.1, evidence: 5.5, honesty: 6.2, overall: 5.8 },
+  google:    { reasoning: 4.2, coherence: 4.4, evidence: 4.0, honesty: 4.5, overall: 4.3 },
 }
 
 function mockScoreFor(key: string): number {
@@ -55,7 +55,11 @@ function mockResponse(questions: Record<string, JevQuestion>): JevResponse {
       const probs = Object.fromEntries(opts.map(o => [o, o === winner ? 0.55 : even]))
       answers[key] = { type: 'choice', choice: winner, confidence: 0.55, probabilities: probs }
     } else {
-      answers[key] = { type: 'noul', noul: 0.2, confidence: 0.70 }
+      const noul = key.endsWith('_eq_burden') ? 0.7  // burden exists: EQ applies
+               : key.endsWith('_fabrication') ? 0.1  // no fabrication
+               : key.endsWith('_contradiction') ? 0.1  // no contradiction
+               : 0.2
+      answers[key] = { type: 'noul', noul, confidence: 0.70 }
     }
   }
   return {

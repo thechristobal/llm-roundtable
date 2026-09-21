@@ -2,13 +2,11 @@ import { PROVIDERS, type JevProviderRound, type JevRoundResult, type ProviderID 
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 
-const DIMS: { key: keyof Omit<JevProviderRound, 'overall'>; label: string }[] = [
+const DIMS: { key: keyof Pick<JevProviderRound, 'reasoning' | 'coherence' | 'evidence' | 'honesty'>; label: string }[] = [
   { key: 'reasoning', label: 'Reasoning' },
-  { key: 'rebuttal', label: 'Engagement' },
+  { key: 'honesty', label: 'Intellectual Honesty' },
+  { key: 'evidence', label: 'Evidence Quality' },
   { key: 'coherence', label: 'Coherence' },
-  { key: 'evidence', label: 'Evidence' },
-  { key: 'honesty', label: 'Honesty' },
-  { key: 'spirit', label: 'Spirit' },
 ]
 
 type Props = {
@@ -46,13 +44,33 @@ export default function JevRoundScores({ result, userVotes, onVote }: Props) {
               <div key={id} className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-medium mb-0.5" style={{ color: PROVIDERS[id].accentColor }}>
                   {PROVIDERS[id].name}
+                  {p.fabricationDetected && <span className="ml-1 text-red-500">⚠ fabrication</span>}
+                  {p.contradictionDetected && <span className="ml-1 text-orange-400">⚠ contradiction</span>}
                 </span>
-                {DIMS.map(({ key, label }) => (
-                  <div key={key} className="flex justify-between text-[10px]">
-                    <span className="text-[#4a4a5a]">{label}</span>
-                    <span className="text-[#c9c9d8]">{p[key].score.toFixed(1)}</span>
-                  </div>
-                ))}
+                {DIMS.map(({ key, label }) => {
+                  const isEq = key === 'evidence'
+                  const anchored = isEq && p.eqAnchored
+                  return (
+                    <div key={key} className="flex justify-between text-[10px]">
+                      <span className="text-[#4a4a5a]">{label}</span>
+                      <span className={anchored ? 'text-[#4a4a5a]' : 'text-[#c9c9d8]'}>
+                        {p[key].score.toFixed(1)}
+                        {anchored && <span className="ml-0.5 text-[9px]">~</span>}
+                      </span>
+                    </div>
+                  )
+                })}
+                {(() => {
+                  const failed = p.relevance.noul >= 0.5
+                  return (
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-[#4a4a5a]">Task Adherence</span>
+                      <span className={failed ? 'text-red-400 font-medium' : 'text-emerald-400 font-medium'}>
+                        {failed ? 'Fail' : 'Pass'}
+                      </span>
+                    </div>
+                  )
+                })()}
                 <div className="flex justify-between text-[10px] border-t border-[#1e1e2e] mt-1 pt-1">
                   <span className="text-[#6b7280] font-medium">Overall</span>
                   <span className="text-[#e8e8f0] font-semibold">{p.overall.toFixed(1)}</span>
