@@ -1,11 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import './App.css'
 import DebateBar from './components/DebateBar'
 import ErrorBoundary from './components/ErrorBoundary'
+import JevPanel from './components/JevPanel'
+import JevRoundScores from './components/JevRoundScores'
 import ProviderPanel from './components/ProviderPanel'
 import { downloadDebate } from './export'
 import { importDebate } from './export/importDebate'
-import { type DebateAction, type PanelState, type ProviderID, type Round } from './types'
+import { type DebateAction, type JevFinalResult, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 
@@ -43,6 +45,17 @@ function toDebateRounds(rounds: Round[]) {
   }))
 }
 
+
+function buildJevPayload(jevFinal: JevFinalResult, jevRounds: JevRoundResult[]) {
+  if (jevFinal.status !== 'complete') return {}
+  return {
+    jevFinal: { scores: jevFinal.scores, claimRisk: jevFinal.claimRisk, winner: jevFinal.winner, winnerConfidence: jevFinal.winnerConfidence },
+    jevRounds: jevRounds.map(r => r.status === 'complete'
+      ? { providers: Object.fromEntries(Object.entries(r.providers).map(([k, v]) => [k, { overall: v!.overall }])) }
+      : null
+    ),
+  }
+}
 
 function PromptLabel({ prompt, trigger }: { prompt: string; trigger: Round['trigger'] }) {
   const [expanded, setExpanded] = useState(false)
@@ -87,9 +100,14 @@ export default function App() {
   const [rounds, setRounds] = useState<Round[]>([])
   const [prompt, setPrompt] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [jevRounds, setJevRounds] = useState<JevRoundResult[]>([])
+  const [jevFinal, setJevFinal] = useState<JevFinalResult>({ status: 'idle' })
+  const [userVotes, setUserVotes] = useState<Record<number, Set<ProviderID>>>({})
+
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const judgedRoundsRef = useRef<Set<number>>(new Set())
 
   const latestRound = rounds[rounds.length - 1] ?? null
   const isLoading = latestRound !== null &&
@@ -117,9 +135,81 @@ export default function App() {
     }
   }
 
+  const judgeRound = useCallback(async (idx: number, round: Round) => {
+    setJevRounds(prev => {
+      const next = [...prev]
+      while (next.length <= idx) next.push({ status: 'idle' })
+      next[idx] = { status: 'loading' }
+      return next
+    })
+    try {
+      const roundData = {
+        trigger: round.trigger,
+        prompt: round.prompt,
+        responses: Object.fromEntries(
+          PROVIDER_ORDER.map(id => [id, round.panels[id].status === 'complete' ? (round.panels[id] as Extract<typeof round.panels[ProviderID], { status: 'complete' }>).content : null])
+        ),
+      }
+      const res = await fetch('/api/judge/round', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ round: roundData, allProviders: PROVIDER_ORDER, isInitial: round.trigger === 'initial' }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setJevRounds(prev => {
+        const next = [...prev]
+        next[idx] = { status: 'complete', providers: data.providers, mock: data.mock ?? false }
+        return next
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Evaluation failed'
+      setJevRounds(prev => {
+        const next = [...prev]
+        next[idx] = { status: 'error', message }
+        return next
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    rounds.forEach((round, i) => {
+      if (judgedRoundsRef.current.has(i)) return
+      const allResolved = PROVIDER_ORDER.every(id => {
+        const s = round.panels[id].status
+        return s === 'complete' || s === 'error'
+      })
+      if (!allResolved) return
+      if (!PROVIDER_ORDER.some(id => round.panels[id].status === 'complete')) return
+      judgedRoundsRef.current.add(i)
+      judgeRound(i, round)
+    })
+  }, [rounds, judgeRound])
+
+  async function handleJudge() {
+    setJevFinal({ status: 'loading' })
+    try {
+      const roundsData = toDebateRounds(rounds)
+      const res = await fetch('/api/judge/final', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rounds: roundsData, allProviders: PROVIDER_ORDER }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as { scores: Record<string, number>; claimRisk: Record<string, number>; winner: string; winnerConfidence: number; mock: boolean }
+      setJevFinal({ status: 'complete', scores: data.scores, claimRisk: data.claimRisk, winner: data.winner, winnerConfidence: data.winnerConfidence, mock: data.mock })
+    } catch (err) {
+      setJevFinal({ status: 'error', message: err instanceof Error ? err.message : 'Judgment failed' })
+    }
+  }
+
   function handleReset() {
     setRounds([])
     setPrompt('')
+    setJevRounds([])
+    setJevFinal({ status: 'idle' })
+    setUserVotes({})
+    judgedRoundsRef.current.clear()
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
@@ -152,7 +242,7 @@ export default function App() {
     await Promise.all(PROVIDER_ORDER.map(async id => {
       try {
         const result = isContinuation
-          ? await fetchFromEndpoint('/api/debate/ask', { provider: id, action: 'follow_up', followUpPrompt: trimmed, rounds: debateRounds })
+          ? await fetchFromEndpoint('/api/debate/ask', { provider: id, action: 'follow_up', followUpPrompt: trimmed, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) })
           : await fetchFromEndpoint('/api/ask', { provider: id, prompt: trimmed })
         setRounds(prev => {
           const next = [...prev]
@@ -182,7 +272,7 @@ export default function App() {
 
     await Promise.all(PROVIDER_ORDER.map(async id => {
       try {
-        const result = await fetchFromEndpoint('/api/debate/ask', { provider: id, action, rounds: debateRounds })
+        const result = await fetchFromEndpoint('/api/debate/ask', { provider: id, action, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) })
         setRounds(prev => {
           const next = [...prev]
           next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model } } }
@@ -328,6 +418,15 @@ export default function App() {
                     </ErrorBoundary>
                   ))}
                 </div>
+                <JevRoundScores
+                  result={jevRounds[i] ?? { status: 'idle' }}
+                  userVotes={userVotes[i] ?? new Set()}
+                  onVote={(id) => setUserVotes(prev => {
+                    const current = new Set(prev[i])
+                    current.has(id) ? current.delete(id) : current.add(id)
+                    return { ...prev, [i]: current }
+                  })}
+                />
               </section>
             ))}
             <div ref={bottomRef} />
@@ -336,8 +435,14 @@ export default function App() {
       </main>
 
       {hasCompleteRound && !isLoading && (
-        <DebateBar onAction={handleDebateAction} disabled={isLoading} />
+        <DebateBar
+          onAction={handleDebateAction}
+          disabled={isLoading}
+          onJudge={handleJudge}
+          judging={jevFinal.status === 'loading'}
+        />
       )}
+      <JevPanel result={jevFinal} />
 
       <footer className="px-4 pb-4 pt-2 shrink-0">
         <div className="flex gap-3 items-end bg-[#17171f] border border-[#2a2a38] rounded-xl p-3">

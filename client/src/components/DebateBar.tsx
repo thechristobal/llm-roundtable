@@ -3,6 +3,8 @@ import { type DebateAction } from '../types'
 type Props = {
   onAction: (action: DebateAction) => void
   disabled: boolean
+  onJudge?: () => void
+  judging?: boolean
 }
 
 const ACTIONS: { action: DebateAction; label: string; className: string }[] = [
@@ -18,9 +20,9 @@ const ACTIONS: { action: DebateAction; label: string; className: string }[] = [
   },
 ]
 
-export default function DebateBar({ onAction, disabled }: Props) {
+export default function DebateBar({ onAction, disabled, onJudge, judging }: Props) {
   return (
-    <div className="px-4 py-2 border-t border-[#2a2a38] flex gap-2 shrink-0">
+    <div className="px-4 py-2 border-t border-[#2a2a38] flex items-center gap-2 shrink-0">
       {ACTIONS.map(({ action, label, className }) => (
         <button
           key={action}
@@ -31,6 +33,15 @@ export default function DebateBar({ onAction, disabled }: Props) {
           {label}
         </button>
       ))}
+      {onJudge && (
+        <button
+          onClick={onJudge}
+          disabled={disabled || judging}
+          className="ml-auto px-4 py-1.5 rounded-lg text-xs font-medium border border-[#4a3f6b] text-violet-400 hover:bg-violet-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {judging ? 'Judging...' : 'Judge the Debate'}
+        </button>
+      )}
     </div>
   )
 }

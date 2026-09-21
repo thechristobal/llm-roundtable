@@ -32,6 +32,30 @@ export type PanelState =
 
 export type DebateAction = 'fight' | 'follow_up' | 'seek_consensus'
 
+export type JevDimScore = { score: number; confidence: number }
+
+export type JevProviderRound = {
+  reasoning: JevDimScore
+  rebuttal: JevDimScore
+  coherence: JevDimScore
+  evidence: JevDimScore
+  honesty: JevDimScore
+  spirit: JevDimScore
+  overall: number
+}
+
+export type JevRoundResult =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'complete'; providers: Partial<Record<ProviderID, JevProviderRound>>; mock: boolean }
+  | { status: 'error'; message: string }
+
+export type JevFinalResult =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'complete'; scores: Partial<Record<ProviderID, number>>; claimRisk: Partial<Record<ProviderID, number>>; winner: string; winnerConfidence: number; mock: boolean }
+  | { status: 'error'; message: string }
+
 export type Round = {
   trigger: 'initial' | DebateAction
   prompt: string | null

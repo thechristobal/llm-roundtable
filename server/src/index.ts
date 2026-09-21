@@ -10,8 +10,10 @@ const PROVIDER_MODELS: Record<string, string> = {
   anthropic: ANTHROPIC_MODEL,
   google: GOOGLE_MODEL,
 }
-import { buildDebateSystemPrompt, type DebateAction, type DebateRound } from './debatePrompt.js'
+import { buildDebateSystemPrompt, type DebateAction, type DebateRound, type JevFinalContext, type JevRoundContext } from './debatePrompt.js'
 import { buildSystemPrompt } from './systemPrompt.js'
+import { queryJev } from './adapters/jev.js'
+import { buildRoundState, buildRoundQuestions, buildFinalState, buildFinalQuestions, type JudgeRound } from './judgePrompt.js'
 
 const ALL_PROVIDERS = ['openai', 'anthropic', 'google']
 
@@ -56,7 +58,14 @@ app.post('/api/ask', async (req, res) => {
 })
 
 app.post('/api/debate/ask', async (req, res) => {
-  const { provider, action, rounds, followUpPrompt } = req.body as { provider: string; action: DebateAction; rounds: DebateRound[]; followUpPrompt?: string }
+  const { provider, action, rounds, followUpPrompt, jevFinal, jevRounds } = req.body as {
+    provider: string
+    action: DebateAction
+    rounds: DebateRound[]
+    followUpPrompt?: string
+    jevFinal?: JevFinalContext
+    jevRounds?: (JevRoundContext | null)[]
+  }
 
   if (!provider || !action || !rounds?.length) {
     res.status(400).json({ error: 'provider, action, and rounds are required' })
@@ -64,7 +73,7 @@ app.post('/api/debate/ask', async (req, res) => {
   }
 
   try {
-    const systemPrompt = buildDebateSystemPrompt(provider, ALL_PROVIDERS, action, rounds, followUpPrompt)
+    const systemPrompt = buildDebateSystemPrompt(provider, ALL_PROVIDERS, action, rounds, followUpPrompt, jevFinal, jevRounds)
     let content: string
 
     if (provider === 'openai') {
@@ -89,6 +98,84 @@ app.post('/api/debate/ask', async (req, res) => {
     } else {
       res.status(500).json({ error: message || 'Unknown error' })
     }
+  }
+})
+
+// Converts Jev's 0-9 weighted score to a 1-10 float with one decimal
+function jevScore(raw: number | undefined): number {
+  return Math.round(((raw ?? 0) + 1) * 10) / 10
+}
+
+app.post('/api/judge/round', async (req, res) => {
+  const { round, allProviders, isInitial } = req.body as {
+    round: JudgeRound
+    allProviders: string[]
+    isInitial: boolean
+  }
+
+  if (!round || !allProviders?.length) {
+    res.status(400).json({ error: 'round and allProviders are required' })
+    return
+  }
+
+  try {
+    const activeProviders = allProviders.filter(p => round.responses[p])
+    const state = buildRoundState(round, allProviders)
+    const questions = buildRoundQuestions(activeProviders, isInitial)
+    const { answers, mock } = await queryJev({ state, model: 'jev-latest', questions })
+
+    const dims = ['reasoning', 'rebuttal', 'coherence', 'evidence', 'honesty', 'spirit'] as const
+    const providers: Record<string, unknown> = {}
+
+    for (const p of activeProviders) {
+      const dimScores = Object.fromEntries(
+        dims.map(d => [d, {
+          score: jevScore(answers[`${p}_${d}`]?.score),
+          confidence: answers[`${p}_${d}`]?.confidence ?? 0,
+        }])
+      )
+      const overall = Math.round(dims.reduce((sum, d) => sum + (dimScores[d] as { score: number }).score, 0) / dims.length * 10) / 10
+      providers[p] = { ...dimScores, overall }
+    }
+
+    res.json({ providers, mock: mock ?? false })
+  } catch (err) {
+    console.error('[judge/round] Error:', err)
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Evaluation failed' })
+  }
+})
+
+app.post('/api/judge/final', async (req, res) => {
+  const { rounds, allProviders } = req.body as { rounds: JudgeRound[]; allProviders: string[] }
+
+  if (!rounds?.length || !allProviders?.length) {
+    res.status(400).json({ error: 'rounds and allProviders are required' })
+    return
+  }
+
+  try {
+    const activeProviders = allProviders.filter(p =>
+      rounds.some(r => r.responses[p])
+    )
+    const state = buildFinalState(rounds, allProviders)
+    const questions = buildFinalQuestions(activeProviders)
+    const { answers, mock } = await queryJev({ state, model: 'jev-latest', questions })
+
+    const scores: Record<string, number> = {}
+    const claimRisk: Record<string, number> = {}
+    for (const p of activeProviders) {
+      scores[p] = jevScore(answers[`${p}_overall`]?.score)
+      claimRisk[p] = answers[`${p}_claim_risk`]?.noul ?? 0
+    }
+
+    const winnerAnswer = answers.winner
+    const winner = winnerAnswer?.choice ?? 'tie'
+    const winnerConfidence = winnerAnswer?.confidence ?? 0
+
+    res.json({ scores, claimRisk, winner, winnerConfidence, mock: mock ?? false })
+  } catch (err) {
+    console.error('[judge/final] Error:', err)
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Judgment failed' })
   }
 })
 

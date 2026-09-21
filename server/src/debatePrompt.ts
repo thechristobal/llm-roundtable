@@ -12,12 +12,25 @@ export type DebateRound = {
   responses: Record<string, string | null>
 }
 
+export type JevRoundContext = {
+  providers: Record<string, { overall: number }>
+}
+
+export type JevFinalContext = {
+  scores: Record<string, number>
+  claimRisk: Record<string, number>
+  winner: string
+  winnerConfidence: number
+}
+
 export function buildDebateSystemPrompt(
   provider: string,
   allProviders: string[],
   action: DebateAction,
   rounds: DebateRound[],
   followUpPrompt?: string,
+  jevFinal?: JevFinalContext,
+  jevRounds?: (JevRoundContext | null)[],
 ): string {
   const self = MODEL_NAMES[provider] ?? provider
   const others = allProviders.filter(p => p !== provider).map(p => MODEL_NAMES[p] ?? p)
@@ -95,11 +108,51 @@ ${absentRule}
 Do not ask the user questions. End your response definitively.`
   }
 
+  let jevBlock = ''
+  if (jevFinal) {
+    const winnerName = MODEL_NAMES[jevFinal.winner] ?? jevFinal.winner
+    const scoreList = allProviders
+      .filter(p => jevFinal.scores[p] !== undefined)
+      .map(p => `${MODEL_NAMES[p] ?? p} ${jevFinal.scores[p].toFixed(1)}`)
+      .join(' | ')
+    const riskList = allProviders
+      .filter(p => jevFinal.claimRisk[p] !== undefined)
+      .map(p => {
+        const r = jevFinal.claimRisk[p]
+        const label = r < 0.35 ? 'Low' : r < 0.65 ? 'Medium' : 'High'
+        return `${MODEL_NAMES[p] ?? p} ${label}`
+      })
+      .join(' | ')
+
+    const roundLines = jevRounds
+      ? jevRounds.map((jr, i) => {
+          if (!jr) return null
+          const label = i === 0 ? 'Opening Statements' : `Round ${i}`
+          const scores = allProviders
+            .filter(p => jr.providers[p] !== undefined)
+            .map(p => `${MODEL_NAMES[p] ?? p} ${jr.providers[p].overall.toFixed(1)}`)
+            .join(' | ')
+          return `  ${label}: ${scores}`
+        }).filter(Boolean).join('\n')
+      : null
+
+    jevBlock = `
+=== Jev's Independent Judgment (revealed to all contestants) ===
+An independent AI judge (Jev) has evaluated this debate.
+
+Winner: ${winnerName === 'tie' ? 'Tie' : winnerName} (${Math.round(jevFinal.winnerConfidence * 100)}% confidence)
+Overall scores: ${scoreList}
+Unsupported claim risk: ${riskList}${roundLines ? `\n\nPer-round overall scores:\n${roundLines}` : ''}
+
+You may reference Jev's judgment in your response — agree with it, contest it, or use it to strengthen your argument. Do not treat it as infallible, but do engage with it seriously.
+`
+  }
+
   return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}. When writing math, use $$ for inline expressions and a fenced \`\`\`math block for display equations — do not use single $, as it conflicts with currency symbols.
 
 The full debate history is below. You can now read everything your competitors have written in all previous rounds. Treat concessions and withdrawals from prior rounds as binding unless the opponent later reverses them. Do not attack a superseded position.
 ${eliminationNote}
 ${history}
-
+${jevBlock}
 ${taskDirective}`
 }
