@@ -132,18 +132,7 @@ Do not ask the user questions. End your response definitively.`
             .filter(p => jr.providers[p] !== undefined)
             .map(p => `${MODEL_NAMES[p] ?? p} ${jr.providers[p].overall.toFixed(1)}`)
             .join(' | ')
-
-          const flagLines = allProviders
-            .filter(p => p !== provider && (jr.providers[p]?.suspectedFabrication?.length ?? 0) > 0)
-            .map(p => {
-              const spans = jr.providers[p].suspectedFabrication!
-              return `  ${MODEL_NAMES[p] ?? p} — flagged spans (PROTOTYPE, high false-positive rate): ${spans.map(s => `"${s}"`).join(' | ')}`
-            })
-
-          return [
-            `  ${label}: ${scores}`,
-            ...flagLines,
-          ].join('\n')
+          return `  ${label}: ${scores}`
         }).filter(Boolean).join('\n')
       : null
 
@@ -153,19 +142,42 @@ An independent AI judge (Jev) has evaluated this debate.
 
 Winner: ${winnerName === 'tie' ? 'Tie' : winnerName} (${Math.round(jevFinal.winnerConfidence * 100)}% confidence)
 Overall scores: ${scoreList}
-Unsupported claim risk: ${riskList}${roundLines ? `\n\nPer-round scores and flagged spans:\n${roundLines}` : ''}
+Unsupported claim risk: ${riskList}${roundLines ? `\n\nPer-round overall scores:\n${roundLines}` : ''}
 
 You may reference Jev's judgment in your response — agree with it, contest it, or use it to strengthen your argument. Do not treat it as infallible, but do engage with it seriously.
-
-NOTE on flagged spans: If any competitor's response above includes spans marked as "(PROTOTYPE, high false-positive rate)", these are experimental outputs from a span-level fabrication detector that is known to produce false positives. Do NOT cite or attack these as confirmed fabrications. You may investigate whether a flagged claim is genuinely unsupported — but only if you independently assess it as worth scrutinising. If a flagged span looks accurate or the flag seems like noise, ignore it entirely. Do not force engagement with it.
 `
   }
+
+  // Fabrication spans — always shown when present, independent of final judgment
+  const fabricationLines: string[] = []
+  if (jevRounds) {
+    for (let i = 0; i < jevRounds.length; i++) {
+      const jr = jevRounds[i]
+      if (!jr) continue
+      const label = i === 0 ? 'Opening Statements' : `Round ${i}`
+      for (const p of allProviders) {
+        if (p === provider) continue
+        const spans = jr.providers[p]?.suspectedFabrication
+        if (!spans?.length) continue
+        fabricationLines.push(`  ${label} — ${MODEL_NAMES[p] ?? p}: ${spans.map(s => `"${s}"`).join(' | ')}`)
+      }
+    }
+  }
+
+  const fabricationBlock = fabricationLines.length > 0
+    ? `\n=== Jev Span Flags (PROTOTYPE — high false-positive rate) ===
+The following spans in your competitors' responses were flagged by an experimental claim-precision detector. This detector is known to produce false positives. Do NOT treat these as confirmed fabrications or attack them as such. You may independently assess whether a flagged claim is genuinely unsupported — but only engage if you find real substance to challenge. If a flag looks like noise, ignore it entirely.
+
+${fabricationLines.join('\n')}
+`
+    : ''
 
   return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}. When writing math, use $$ for inline expressions and a fenced \`\`\`math block for display equations — do not use single $, as it conflicts with currency symbols.
 
 The full debate history is below. You can now read everything your competitors have written in all previous rounds. Treat concessions and withdrawals from prior rounds as binding unless the opponent later reverses them. Do not attack a superseded position.
 ${eliminationNote}
 ${history}
+${fabricationBlock}
 ${jevBlock}
 ${taskDirective}`
 }
