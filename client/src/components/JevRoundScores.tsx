@@ -5,7 +5,7 @@ const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 const DIMS: { key: keyof Pick<JevProviderRound, 'reasoning' | 'coherence' | 'evidence' | 'honesty'>; label: string }[] = [
   { key: 'reasoning', label: 'Reasoning' },
   { key: 'honesty', label: 'Intellectual Honesty' },
-  { key: 'evidence', label: 'Evidence Quality' },
+  { key: 'evidence', label: 'Precision' },
   { key: 'coherence', label: 'Coherence' },
 ]
 

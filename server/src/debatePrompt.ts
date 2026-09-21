@@ -13,7 +13,7 @@ export type DebateRound = {
 }
 
 export type JevRoundContext = {
-  providers: Record<string, { overall: number }>
+  providers: Record<string, { overall: number; suspectedFabrication?: string[] }>
 }
 
 export type JevFinalContext = {
@@ -132,7 +132,18 @@ Do not ask the user questions. End your response definitively.`
             .filter(p => jr.providers[p] !== undefined)
             .map(p => `${MODEL_NAMES[p] ?? p} ${jr.providers[p].overall.toFixed(1)}`)
             .join(' | ')
-          return `  ${label}: ${scores}`
+
+          const flagLines = allProviders
+            .filter(p => p !== provider && (jr.providers[p]?.suspectedFabrication?.length ?? 0) > 0)
+            .map(p => {
+              const spans = jr.providers[p].suspectedFabrication!
+              return `  ${MODEL_NAMES[p] ?? p} — flagged spans (PROTOTYPE, high false-positive rate): ${spans.map(s => `"${s}"`).join(' | ')}`
+            })
+
+          return [
+            `  ${label}: ${scores}`,
+            ...flagLines,
+          ].join('\n')
         }).filter(Boolean).join('\n')
       : null
 
@@ -142,9 +153,11 @@ An independent AI judge (Jev) has evaluated this debate.
 
 Winner: ${winnerName === 'tie' ? 'Tie' : winnerName} (${Math.round(jevFinal.winnerConfidence * 100)}% confidence)
 Overall scores: ${scoreList}
-Unsupported claim risk: ${riskList}${roundLines ? `\n\nPer-round overall scores:\n${roundLines}` : ''}
+Unsupported claim risk: ${riskList}${roundLines ? `\n\nPer-round scores and flagged spans:\n${roundLines}` : ''}
 
 You may reference Jev's judgment in your response — agree with it, contest it, or use it to strengthen your argument. Do not treat it as infallible, but do engage with it seriously.
+
+NOTE on flagged spans: If any competitor's response above includes spans marked as "(PROTOTYPE, high false-positive rate)", these are experimental outputs from a span-level fabrication detector that is known to produce false positives. Do NOT cite or attack these as confirmed fabrications. You may investigate whether a flagged claim is genuinely unsupported — but only if you independently assess it as worth scrutinising. If a flagged span looks accurate or the flag seems like noise, ignore it entirely. Do not force engagement with it.
 `
   }
 

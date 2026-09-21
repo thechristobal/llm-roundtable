@@ -51,7 +51,7 @@ function buildJevPayload(jevFinal: JevFinalResult, jevRounds: JevRoundResult[]) 
   return {
     jevFinal: { scores: jevFinal.scores, claimRisk: jevFinal.claimRisk, winner: jevFinal.winner, winnerConfidence: jevFinal.winnerConfidence },
     jevRounds: jevRounds.map(r => r.status === 'complete'
-      ? { providers: Object.fromEntries(Object.entries(r.providers).map(([k, v]) => [k, { overall: v!.overall }])) }
+      ? { providers: Object.fromEntries(Object.entries(r.providers).map(([k, v]) => [k, { overall: v!.overall, suspectedFabrication: v!.suspectedFabrication }])) }
       : null
     ),
   }

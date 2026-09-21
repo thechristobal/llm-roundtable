@@ -68,7 +68,7 @@ export function buildRoundQuestions(activeProviders: string[], isInitial: boolea
 
     questions[`${p}_evidence`] = {
       type: 'score',
-      instructions: `Rate the quality of evidence or empirical claims in ${name}'s response. Use 5 as neutral (no evidence deployed). Score above 5 for accurate, specific, well-supported claims — citation not required, accuracy and specificity are the bar. Score above neutral even for accurate specific claims stated without citation. Score below 5 for weak, vague ("studies show..." with no precision), inaccurate, or fabricated evidence. This score may be overridden by the system if no evidentiary burden was incurred.`,
+      instructions: `Rate the precision of empirical claims in ${name}'s response. Use 5 as neutral (no empirical claims made). Score above 5 for claims that are specific, grounded, and stated with appropriate confidence — citation not required, specificity and groundedness are the bar. Score below 5 for vague appeals to authority ("studies show...", "research suggests..." with no precision), imprecise statistics, or claims stated with more confidence than the evidence warrants. This score may be overridden by the system if no evidentiary burden was incurred.`,
       criteria: SCORE_RUBRIC,
     }
 

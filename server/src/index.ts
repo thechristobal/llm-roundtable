@@ -153,7 +153,7 @@ app.post('/api/judge/round', async (req, res) => {
     const { answers, mock } = await queryJev({ state, model: 'jev-latest', questions })
 
     const dims = ['reasoning', 'coherence', 'evidence', 'honesty'] as const
-    const WEIGHTS = { reasoning: 0.35, honesty: 0.28, evidence: 0.20, coherence: 0.17 } as const
+    const WEIGHTS = { reasoning: 0.40, honesty: 0.33, evidence: 0.05, coherence: 0.22 } as const
     const providers: Record<string, unknown> = {}
 
     for (const p of activeProviders) {
