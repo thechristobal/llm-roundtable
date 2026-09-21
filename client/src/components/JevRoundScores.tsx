@@ -44,8 +44,15 @@ export default function JevRoundScores({ result, userVotes, onVote }: Props) {
               <div key={id} className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-medium mb-0.5" style={{ color: PROVIDERS[id].accentColor }}>
                   {PROVIDERS[id].name}
-                  {p.fabricationDetected && <span className="ml-1 text-red-500">⚠ fabrication</span>}
                   {p.contradictionDetected && <span className="ml-1 text-orange-400">⚠ contradiction</span>}
+                {p.fabricationDetected && (
+                  <span
+                    className="ml-1 text-red-400 cursor-help"
+                    title="Fabrication detection is an experimental feature currently in testing. This flag means Jev detected a possible unverified or misrepresented claim — treat it as a prompt for scrutiny, not a definitive finding."
+                  >
+                    ⚠ fabrication
+                  </span>
+                )}
                 </span>
                 {DIMS.map(({ key, label }) => {
                   const isEq = key === 'evidence'

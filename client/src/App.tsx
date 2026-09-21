@@ -414,6 +414,7 @@ export default function App() {
                         providerId={id}
                         state={round.panels[id]}
                         onReroll={i === rounds.length - 1 ? () => handleReroll(i, id) : undefined}
+                        suspectedFabrication={jevRounds[i]?.status === 'complete' ? (jevRounds[i].providers[id]?.suspectedFabrication ?? []) : []}
                       />
                     </ErrorBoundary>
                   ))}

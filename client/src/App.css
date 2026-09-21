@@ -1,1 +1,16 @@
 /* Tailwind handles all styling */
+
+mark[data-jev="fabrication"] {
+  background: rgba(239, 68, 68, 0.12);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.6);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.jev-fabrication-label {
+  font-size: 0.72em;
+  color: rgba(239, 68, 68, 0.7);
+  font-style: italic;
+  cursor: help;
+}

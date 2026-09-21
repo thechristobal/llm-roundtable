@@ -44,6 +44,7 @@ export type JevProviderRound = {
   eqAnchored: boolean
   fabricationDetected: boolean
   contradictionDetected: boolean
+  suspectedFabrication: string[]
 }
 
 export type JevRoundResult =

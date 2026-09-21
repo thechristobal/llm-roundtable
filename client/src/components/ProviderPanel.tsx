@@ -1,9 +1,27 @@
 import 'katex/dist/katex.min.css'
 import rehypeKatex from 'rehype-katex'
+import rehypeRaw from 'rehype-raw'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { PROVIDERS, type PanelState, type ProviderID } from '../types'
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function highlightFabrication(content: string, spans: string[]): string {
+  if (!spans.length) return content
+  let result = content
+  for (const span of spans) {
+    const escaped = escapeRegex(span)
+    result = result.replace(
+      new RegExp(escaped, 'g'),
+      `<mark data-jev="fabrication">${span}<span class="jev-fabrication-label" title="Fabrication detection is an experimental feature currently in testing. Jev flagged this span as a possible unverified or misrepresented claim."> [unverified claim — in testing]</span></mark>`
+    )
+  }
+  return result
+}
 
 function IconChatGPT({ color }: { color: string }) {
   return (
@@ -41,13 +59,14 @@ type Props = {
   providerId: ProviderID
   state: PanelState
   onReroll?: () => void
+  suspectedFabrication?: string[]
 }
 
 function formatDuration(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
 }
 
-export default function ProviderPanel({ providerId, state, onReroll }: Props) {
+export default function ProviderPanel({ providerId, state, onReroll, suspectedFabrication = [] }: Props) {
   const provider = PROVIDERS[providerId]
 
   return (
@@ -87,8 +106,8 @@ export default function ProviderPanel({ providerId, state, onReroll }: Props) {
         )}
         {state.status === 'complete' && (
           <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]} rehypePlugins={[rehypeKatex]}>
-              {state.content}
+            <ReactMarkdown remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+              {highlightFabrication(state.content, suspectedFabrication)}
             </ReactMarkdown>
           </div>
         )}

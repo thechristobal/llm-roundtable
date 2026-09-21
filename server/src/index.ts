@@ -12,10 +12,37 @@ const PROVIDER_MODELS: Record<string, string> = {
 }
 import { buildDebateSystemPrompt, type DebateAction, type DebateRound, type JevFinalContext, type JevRoundContext } from './debatePrompt.js'
 import { buildSystemPrompt } from './systemPrompt.js'
-import { queryJev } from './adapters/jev.js'
+import { queryJev, type JevQuestion } from './adapters/jev.js'
 import { buildRoundState, buildRoundQuestions, buildFinalState, buildFinalQuestions, type JudgeRound } from './judgePrompt.js'
 
 const ALL_PROVIDERS = ['openai', 'anthropic', 'google']
+
+const MODEL_NAMES: Record<string, string> = {
+  openai: 'ChatGPT',
+  anthropic: 'Claude',
+  google: 'Gemini',
+}
+
+function splitSentences(text: string): string[] {
+  return text.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 25)
+}
+
+async function locateFabrication(responseText: string, providerName: string): Promise<string[]> {
+  const sentences = splitSentences(responseText)
+  if (sentences.length === 0) return []
+  const questions: Record<string, JevQuestion> = Object.fromEntries(
+    sentences.map((s, i) => [`span_${i}`, {
+      type: 'noul' as const,
+      instructions: `Does this span contain the fabricated or materially misrepresented claim identified in ${providerName}'s response?\n\nSpan: "${s}"`,
+      criteria: {
+        true: 'Yes — this span contains or is part of the fabricated/misrepresented claim',
+        false: 'No — this span does not contain fabricated material',
+      },
+    }])
+  )
+  const { answers } = await queryJev({ state: { full_response: responseText, provider: providerName }, model: 'jev-latest', questions })
+  return sentences.filter((_, i) => (answers[`span_${i}`]?.noul ?? 0) >= 0.6)
+}
 
 const app = express()
 app.use(express.json())
@@ -106,6 +133,7 @@ function jevScore(raw: number | undefined): number {
   return Math.round(((raw ?? 0) + 1) * 10) / 10
 }
 
+
 app.post('/api/judge/round', async (req, res) => {
   const { round, allProviders, isInitial } = req.body as {
     round: JudgeRound
@@ -137,16 +165,16 @@ app.post('/api/judge/round', async (req, res) => {
       )
 
       const eqAnchored = (answers[`${p}_eq_burden`]?.noul ?? 0) < 0.5
-      const fabricationDetected = (answers[`${p}_fabrication`]?.noul ?? 0) >= 0.5
       const contradictionDetected = (answers[`${p}_contradiction`]?.noul ?? 0) >= 0.5
+      const fabricationDetected = (answers[`${p}_fabrication`]?.noul ?? 0) >= 0.5
 
       if (eqAnchored) dimScores.evidence = { ...dimScores.evidence, score: 5.0 }
+      if (contradictionDetected) {
+        dimScores.coherence = { ...dimScores.coherence, score: Math.min(dimScores.coherence.score, 1.0) }
+      }
       if (fabricationDetected) {
         dimScores.evidence = { ...dimScores.evidence, score: Math.min(dimScores.evidence.score, 1.0) }
         dimScores.honesty = { ...dimScores.honesty, score: Math.min(dimScores.honesty.score, 3.0) }
-      }
-      if (contradictionDetected) {
-        dimScores.coherence = { ...dimScores.coherence, score: Math.min(dimScores.coherence.score, 1.0) }
       }
 
       const overall = Math.round(
@@ -160,8 +188,19 @@ app.post('/api/judge/round', async (req, res) => {
         noul: answers[`${p}_relevance`]?.noul ?? 0,
         confidence: answers[`${p}_relevance`]?.confidence ?? 0,
       }
-      providers[p] = { ...dimScores, relevance, overall, eqAnchored, fabricationDetected, contradictionDetected }
+      providers[p] = { ...dimScores, relevance, overall, eqAnchored, fabricationDetected, contradictionDetected, suspectedFabrication: [] as string[] }
     }
+
+    // Localize fabrication spans for flagged providers (non-blocking)
+    await Promise.all(
+      activeProviders
+        .filter(p => (providers[p] as { fabricationDetected: boolean }).fabricationDetected)
+        .map(async p => {
+          const responseText = round.responses[p] ?? ''
+          const spans = await locateFabrication(responseText, MODEL_NAMES[p] ?? p).catch(() => [])
+          ;(providers[p] as { suspectedFabrication: string[] }).suspectedFabrication = spans
+        })
+    )
 
     res.json({ providers, mock: mock ?? false })
   } catch (err) {
