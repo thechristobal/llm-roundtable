@@ -1,9 +1,13 @@
 import type { ForgeConfig } from '@electron-forge/shared-types'
-import { MakerSquirrel } from '@electron-forge/maker-squirrel'
-import { MakerZip } from '@electron-forge/maker-zip'
-import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives'
-import { VitePlugin } from '@electron-forge/plugin-vite'
 import { mkdirSync } from 'fs'
+
+// require() avoids jiti ESM/CJS interop issues with Forge maker/plugin classes
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { MakerSquirrel } = require('@electron-forge/maker-squirrel')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { AutoUnpackNativesPlugin } = require('@electron-forge/plugin-auto-unpack-natives')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { VitePlugin } = require('@electron-forge/plugin-vite')
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -13,7 +17,6 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({ name: 'LLMRoundtable' }),
-    new MakerZip({}, ['darwin']),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
@@ -39,6 +42,10 @@ const config: ForgeConfig = {
         outfile: 'electron/resources/server.js',
         format: 'cjs',
         external: ['fsevents'],
+        // esbuild sets import_meta = {} in CJS mode, leaving import.meta.url undefined.
+        // Replace every import.meta.url with _importMetaUrl, defined by the banner.
+        define: { 'import.meta.url': '_importMetaUrl' },
+        banner: { js: "var _importMetaUrl = require('url').pathToFileURL(__filename).href;" },
       })
       console.log('[roundtable] server bundle built → electron/resources/server.js')
     },

@@ -11,7 +11,7 @@ server/dist/
 .vite/
 out/
 electron/resources/*.js
-electron/resources/server.js
+electron/resources/*.mjs
 
 # Generated files — re-run scripts to rebuild
 client/src/export/katex-inlined.ts
