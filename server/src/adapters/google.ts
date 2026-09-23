@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GOOGLE_MODEL } from '../models.js'
 
 let client: GoogleGenerativeAI | null = null
 function getClient() {
@@ -8,7 +9,7 @@ function getClient() {
 
 async function attempt(prompt: string, systemPrompt?: string): Promise<string> {
   const model = getClient().getGenerativeModel({
-    model: 'gemini-3.6-flash',
+    model: GOOGLE_MODEL,
     ...(systemPrompt ? { systemInstruction: systemPrompt } : {}),
   })
   const result = await model.generateContent(prompt)

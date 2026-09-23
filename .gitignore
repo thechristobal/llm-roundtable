@@ -7,6 +7,12 @@ server/node_modules/
 client/dist/
 server/dist/
 
+# Electron / Forge build artifacts
+.vite/
+out/
+electron/resources/*.js
+electron/resources/*.mjs
+
 # Generated files — re-run scripts to rebuild
 client/src/export/katex-inlined.ts
 
@@ -23,6 +29,11 @@ npm-debug.log*
 
 # Personal notes — not for public repo
 *.rtf
+*.html
+
+# Claude Code / agent internals
+.agents/
+.claude/
 
 # OS
 .DS_Store

@@ -32,5 +32,7 @@ Do NOT manufacture disagreement or take contrarian positions just to seem indepe
 
 Your competitors are writing their responses simultaneously and cannot see yours yet — and you cannot see theirs. All responses will be revealed at the same time. If the debate continues to further rounds, each competitor will have full access to what everyone else wrote. The UI labels this first round "Opening Statements"; subsequent debate rounds are numbered Round 1, Round 2, and so on.
 
+When writing math, use $$ for inline expressions (e.g. $$E = mc^2$$) and a fenced code block with \`\`\`math for display equations. Do not use a single $ — it will not render and will conflict with currency symbols.
+
 Do not ask the user follow-up questions or invite further conversation. This is a panel response, not a dialogue. End your answer definitively.`
 }
