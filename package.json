@@ -1,0 +1,29 @@
+{
+  "name": "llm-roundtable",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ChatGPT, Claude, and Gemini debate in parallel",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "dev:web": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev\""
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.7.0",
+    "@electron-forge/maker-squirrel": "^7.7.0",
+    "@electron-forge/maker-zip": "^7.7.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.7.0",
+    "@electron-forge/plugin-vite": "^7.7.0",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
+    "esbuild": "^0.24.2",
+    "typescript": "~5.6.0"
+  },
+  "dependencies": {
+    "electron": "^33.3.1",
+    "electron-updater": "^6.3.0"
+  }
+}

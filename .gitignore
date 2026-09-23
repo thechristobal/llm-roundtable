@@ -7,6 +7,12 @@ server/node_modules/
 client/dist/
 server/dist/
 
+# Electron / Forge build artifacts
+.vite/
+out/
+electron/resources/*.js
+electron/resources/server.js
+
 # Generated files — re-run scripts to rebuild
 client/src/export/katex-inlined.ts
 

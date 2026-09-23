@@ -45,6 +45,15 @@ async function locateFabrication(responseText: string, providerName: string): Pr
 }
 
 const app = express()
+
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') { res.sendStatus(200); return }
+  next()
+})
+
 app.use(express.json())
 
 app.post('/api/ask', async (req, res) => {
@@ -244,4 +253,5 @@ app.post('/api/judge/final', async (req, res) => {
 })
 
 const port = process.env.PORT ?? 3001
-app.listen(port, () => console.log(`Server running on port ${port}`))
+const host = process.env.HOST ?? '0.0.0.0'
+app.listen(Number(port), host, () => console.log(`Server running on ${host}:${port}`))

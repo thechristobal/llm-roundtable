@@ -5,8 +5,10 @@ import ErrorBoundary from './components/ErrorBoundary'
 import JevPanel from './components/JevPanel'
 import JevRoundScores from './components/JevRoundScores'
 import ProviderPanel from './components/ProviderPanel'
+import ProviderSetup from './components/ProviderSetup'
 import { downloadDebate } from './export'
 import { importDebate } from './export/importDebate'
+import { apiBase } from './lib/api'
 import { type DebateAction, type JevFinalResult, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
@@ -19,7 +21,7 @@ const LOADING_PANELS: Record<ProviderID, PanelState> = {
 
 async function fetchFromEndpoint(url: string, body: object): Promise<{ content: string; durationMs: number }> {
   const start = Date.now()
-  const res = await fetch(url, {
+  const res = await fetch(apiBase() + url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -103,6 +105,9 @@ export default function App() {
   const [jevRounds, setJevRounds] = useState<JevRoundResult[]>([])
   const [jevFinal, setJevFinal] = useState<JevFinalResult>({ status: 'idle' })
   const [userVotes, setUserVotes] = useState<Record<number, Set<ProviderID>>>({})
+  const [setupChecked, setSetupChecked] = useState(!window.electronAPI)
+  const [setupNeeded, setSetupNeeded] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -114,6 +119,14 @@ export default function App() {
     PROVIDER_ORDER.some(id => latestRound.panels[id].status === 'loading')
   const hasCompleteRound = latestRound !== null &&
     PROVIDER_ORDER.every(id => latestRound.panels[id].status !== 'loading' && latestRound.panels[id].status !== 'idle')
+
+  useEffect(() => {
+    if (!window.electronAPI) return
+    window.electronAPI.getProviderStatus().then(status => {
+      setSetupNeeded(!Object.values(status).some(Boolean))
+      setSetupChecked(true)
+    })
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -150,7 +163,7 @@ export default function App() {
           PROVIDER_ORDER.map(id => [id, round.panels[id].status === 'complete' ? (round.panels[id] as Extract<typeof round.panels[ProviderID], { status: 'complete' }>).content : null])
         ),
       }
-      const res = await fetch('/api/judge/round', {
+      const res = await fetch(apiBase() + '/api/judge/round', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ round: roundData, allProviders: PROVIDER_ORDER, isInitial: round.trigger === 'initial' }),
@@ -190,7 +203,7 @@ export default function App() {
     setJevFinal({ status: 'loading' })
     try {
       const roundsData = toDebateRounds(rounds)
-      const res = await fetch('/api/judge/final', {
+      const res = await fetch(apiBase() + '/api/judge/final', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rounds: roundsData, allProviders: PROVIDER_ORDER }),
@@ -342,6 +355,26 @@ export default function App() {
     }
   }
 
+  if (!setupChecked) return null
+
+  if (setupNeeded) {
+    return (
+      <ProviderSetup
+        mode="setup"
+        onComplete={() => setSetupNeeded(false)}
+      />
+    )
+  }
+
+  if (showSettings) {
+    return (
+      <ProviderSetup
+        mode="settings"
+        onClose={() => setShowSettings(false)}
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
 
@@ -362,6 +395,14 @@ export default function App() {
             className="hidden"
             onChange={handleImport}
           />
+          {window.electronAPI && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"
+            >
+              Settings
+            </button>
+          )}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="text-xs text-[#6b7280] hover:text-[#c9c9d8] transition-colors"

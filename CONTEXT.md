@@ -26,22 +26,30 @@ This file is the source of truth for project state across sessions. Update it at
 
 | Layer | Tech | Notes |
 |---|---|---|
-| Frontend | React + TypeScript | Web app first; packaged into Electron later |
-| Desktop packaging | Electron (via Electron Forge) | Deferred until UI is stable |
-| Backend | AWS Lambda | TypeScript orchestration to start |
-| API routing | AWS API Gateway | Trigger for Lambda |
-| Database | AWS DynamoDB | Session/debate storage |
-| Orchestration (later) | AWS Step Functions | Migrate from Lambda TS when workflow becomes multi-stage |
-| Streaming | SSE or WebSockets | Planned early feature, not day-one requirement |
+| Frontend | React + TypeScript + Vite | Runs as Electron renderer in packaged app |
+| Desktop packaging | Electron + Electron Forge | Active — root-level electron/ + package.json |
+| Backend (local) | Express (Node) | esbuild-bundled single server.js, spawned as child process by Electron main |
+| OpenAI integration | @openai/codex-sdk + @openai/codex binary | Bundled platform binary; auth via codex login (ChatGPT subscription) |
+| Anthropic integration | @anthropic-ai/sdk | User API key, stored in OS keychain via Electron safeStorage |
+| Gemini integration | @google/generative-ai | User API key, stored in OS keychain via Electron safeStorage |
+| Auto-update | electron-updater + GitHub Releases | Windows now, Mac later |
+| Backend (hosted, future) | AWS Lambda + API Gateway | Separate story; for a future web-hosted version |
+| Database (future) | AWS DynamoDB | Session storage for web version |
+| Streaming | SSE or WebSockets | Planned, not yet implemented |
 
 ---
 
 ## Architecture Decisions & Rationale
 
 - **Adapter/normalization layer** over LLM providers: app is provider-agnostic; adding a new model = writing one new adapter. This is the **adapter pattern**, not microservices (adapters live inside one Lambda, not as independently deployable services).
-- **Web first, Electron later**: React is going inside Electron anyway. Get the UI working in a browser first — easier debugging, better tooling. Package into Electron once stable.
+- **Web first, Electron later**: React is going inside Electron anyway. Get the UI working in a browser first — easier debugging, better tooling. Now packaging into Electron.
 - **Lambda TS orchestration first, Step Functions later**: Better portfolio story to migrate *when the workflow demands it* (retries, branching, multi-round) than to wire it in preemptively. Shows understanding of *why* Step Functions exists.
 - **No Grok**: User explicitly does not want to give Elon Musk money.
+- **Electron + Express child process**: Express server is compiled to a single esbuild bundle and spawned as a child process by Electron's main process. Keeps server logic separate and unchanged; Electron manages lifecycle.
+- **User-owned credentials via OS keychain**: API keys for Anthropic and Gemini stored in OS keychain via Electron `safeStorage`. OpenAI handled via Codex App Server using user's ChatGPT subscription (codex login). Keys are never stored in plaintext or in any file the app controls.
+- **AWS is the web version story, not the desktop story**: Electron = desktop app, user pays their own API bills. AWS = future hosted web version. These are separate distribution paths, not the same thing.
+- **Anthropic subscription OAuth is off the table**: Officially banned for third-party apps and server-side blocked since January 2026. API key only for Anthropic.
+- **OpenAI via Codex App Server**: Uses `@openai/codex-sdk` + bundled platform binary. User authenticates once via `codex login` (ChatGPT subscription, available on Free and all paid tiers). Agent constrained to text-only responses — no file access, shell commands, or coding tools during debates.
 
 ---
 
@@ -78,31 +86,76 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 
 ---
 
+## Distribution & Auth Architecture
+
+**Project structure (root-level):**
+```
+electron/          ← Electron main process + preload
+client/            ← React/Vite renderer (existing)
+server/            ← Express server (existing, esbuild-bundled for packaging)
+package.json       ← Root; Electron Forge config lives here
+```
+
+**Provider auth model:**
+| Provider | Auth method | Storage |
+|---|---|---|
+| OpenAI (ChatGPT) | Codex App Server — `codex login` (ChatGPT subscription) | `~/.codex/auth.json` (managed by Codex) |
+| Anthropic (Claude) | User API key | OS keychain via Electron `safeStorage` |
+| Gemini | User API key | OS keychain via Electron `safeStorage` |
+
+**First-run screen:** Single "Provider Setup" screen on first launch (or when any provider is unconfigured). All three providers visible simultaneously, each skippable. Codex shows a "Connect with ChatGPT" button; Anthropic and Gemini show paste fields with live validation. Green checkmark per provider on success.
+
+**Settings:** Persistent settings access from the main UI header. Shows connection status per provider; allows re-auth, key rotation, and disconnect.
+
+**Packaging:**
+- Windows: Squirrel installer via Electron Forge, auto-update via `electron-updater` + GitHub Releases
+- Mac: Planned for later
+- Server: esbuild bundle → single `server.js` in app resources; spawned with Electron's bundled Node
+
+---
+
+## Jev — AI Judge Panel
+
+Jev (TypeSafe AI System One) is an independent judge that evaluates each debate round and the full debate. Not one of the three debaters.
+
+**Scoring dimensions (weighted):**
+| Dimension | Weight | What it measures |
+|---|---|---|
+| Reasoning | 40% | Logical structure and argument quality |
+| Intellectual Honesty | 33% | Acknowledges uncertainty, avoids strawmanning |
+| Coherence | 22% | Internal consistency, no self-contradiction |
+| Precision | 5% | Specificity of empirical claims (low weight: Jev can't fact-check) |
+
+**Special flags (noul questions):**
+- **Task Adherence**: Pass/fail — did the model actually answer what was asked?
+- **EQ Anchor**: If no evidentiary burden incurred, Precision score anchored to 5.0
+- **Contradiction cap**: If material self-contradiction detected, Coherence capped at 1.0
+- **Fabrication detection** (experimental): Caps Precision at 1.0 and IH at 3.0 if fired; triggers follow-up span-localization call; highlights suspected spans in UI with "unverified claim — in testing" tooltip
+
+**Fabrication span visibility:** After Jev scores a round, suspected fabrication spans for competitor responses are included in subsequent debate prompts with a strong false-positive caveat. Models may independently investigate but are not forced to engage.
+
+---
+
 ## Stretch Goals (do not block v1)
 
-- **User-owned API keys** — users download and run locally, pointing the app at their own `.env` file. No key entry UI. Important before sharing with anyone.
-- **Dynamic panel count + provider/model selection** — dropdown to choose how many panels, which provider each one uses, and which specific model (e.g., run GPT-4o vs GPT-4o-mini side by side, or three different Claude models). Enables running one provider against itself across models.
-
+- **Dynamic panel count + provider/model selection** — dropdown to choose how many panels, which provider each one uses, and which specific model. Enables running one provider against itself across models.
 - **RAG / embeddings / vector DB** — embed response chunks and compare semantic similarity to distinguish "these two models essentially agree" from "these answers are making genuinely different claims." This is the *natural* entry point for embeddings in this app — it solves a real problem (accurate consensus/disputed detection) rather than bolting on an unrelated feature like a document chatbot.
-- Authentication + login page (required before user-owned API keys can work — users need to authenticate before the app can route requests through their accounts)
-- Saved debates (if saved to user account, should live in a "Roundtable" project/folder in that account)
+- Saved debates / user accounts
 - Login/landing page for final product
 - Branching conversations
-- **Harden positions mode** — debate action button: models dig in, disagree harder, defend positions more aggressively
-- **Seek consensus mode** — opposite of harden positions: models look for common ground, make concessions, converge toward agreement
-- **Jev as judge** — Jev takes the LLM judge panel role; evaluates the debate and declares a winner or renders a verdict
-- **Jev passive consensus detection** — after each round, Jev scans responses and surfaces per-topic agreement/disagreement indicators ("these two agree on X", "disputed: Y"). Natural precursor to the RAG/embeddings stretch goal.
-- **Provider abstention classification** — detect when a model declines or partially refuses due to policy constraints; represent as `responseStatus: 'abstained'` distinct from `error`; judges (Jev) should distinguish abstention from low-quality reasoning when scoring
+- **Harden positions mode** — debate action button: models dig in harder, defend positions more aggressively
+- **Jev passive consensus detection** — after each round, Jev surfaces per-topic agreement/disagreement indicators
+- **Provider abstention classification** — detect policy refusals; `responseStatus: 'abstained'` distinct from `error`
+- **Precision scoring via separate model** — Mistral/Perplexity for live claim verification (filed as stretch; current Jev-based Precision is experimental)
 - Token/cost tracking
 - Voting / evaluations
 - User-created panel personas
-- Header subtitle with more personality/branding (currently purely functional)
-- Model icons/logos in panel headers for visual polish
-- **Export debate to file** — ✓ built (HTML with KaTeX; markdown/JSON formats extensible via exporter registry)
-- **Import debate from file** — load a previously exported HTML/JSON debate to continue or review it
-- **Jev** — judge panel role (see above)
+- Model icons/logos in panel headers
 - Public share links
 - Local model support
+- **Export debate to file** — ✓ built (HTML with KaTeX)
+- **Import debate from file** — ✓ built
+- **Jev judge panel** — ✓ built (round scoring + final verdict + fabrication detection)
 
 ---
 
@@ -177,4 +230,36 @@ Competitive peer review framing — not pure adversarialism (which causes "debat
 - Absent-model rule added to debate prompts
 - Provider abstention classification added to stretch goals
 
-### Next session: Seek consensus action, import feature, or DebateBar polish
+### 2026-09-14 to 2026-09-20 — Sessions 5–6: Jev integration + scoring framework
+
+- Integrated Jev (TypeSafe AI System One) as independent debate judge
+- Built `/api/judge/round` and `/api/judge/final` endpoints
+- Scoring: Reasoning 40% / Intellectual Honesty 33% / Coherence 22% / Precision 5%
+- Special flags: Task Adherence (pass/fail), EQ anchor (no evidentiary burden → Precision = 5.0), Contradiction cap (Coherence capped at 1.0), Fabrication detection (experimental)
+- Fabrication span localization: follow-up Jev call splits response into sentence spans, highlights high-confidence spans in UI with "unverified claim — in testing" tooltip
+- Fabrication spans included in subsequent debate prompts with false-positive caveat
+- JevRoundScores component: per-provider scorecard below each round
+- JevPanel component: final verdict with minimize toggle and agree/disagree user reaction
+- User votes: multi-select per round (Set<ProviderID>), not single-select
+- Models see Jev's final judgment in all subsequent rounds after Judge is called
+- Seek Consensus action button live (fight + seek_consensus in DebateBar)
+- Import debate from HTML file
+- Renamed "Evidence Quality" → "Precision"; updated rubric to focus on specificity/groundedness
+- Ran 6-round internal debate to determine scoring weights; synthesized consensus
+- Committed and pushed all work to workshop branch
+
+### 2026-09-23 — Session 7: Electron packaging architecture + grilling
+
+- Decided: Electron desktop app is the distribution path (not AWS web hosting — those are separate stories)
+- Project structure: root-level `electron/` + root `package.json` for Forge; `client/` and `server/` unchanged
+- Server packaging: esbuild → single `server.js` bundled in app resources; spawned as child process
+- Auto-update: `electron-updater` + GitHub Releases; Windows now, Mac later
+- Provider auth decisions:
+  - OpenAI: Codex App Server (`@openai/codex-sdk` + bundled platform binary); user authenticates via `codex login` (ChatGPT subscription, available on all tiers including Free); constrained to text-only responses
+  - Anthropic: User API key in OS keychain via `safeStorage` (subscription OAuth permanently banned for third parties, server-side blocked since Jan 2026)
+  - Gemini: User API key in OS keychain via `safeStorage`; live-validated on paste
+- First-run: single Provider Setup screen, all three providers visible and skippable
+- Settings: persistent header access, connection status per provider
+- Codex SDK research: determining exact text-only constraint config before implementation (pending)
+
+### Next session: Implement Electron scaffolding once Codex SDK research resolves
