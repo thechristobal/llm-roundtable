@@ -1,0 +1,39 @@
+// Reference implementation: original askAnthropic that used @anthropic-ai/claude-agent-sdk.
+// The env filter below explicitly strips ANTHROPIC_API_KEY, forcing the SDK to fall
+// through to OAuth-via-keychain — i.e. the user's Claude Code subscription.
+//
+// This file is intentionally NOT built (the .reference suffix keeps it out of esbuild).
+// If Anthropic's terms are later verified to permit third-party redistribution of the
+// SDK package the same way they permit the unmodified CLI binary, promote this path
+// back into anthropic.ts as an alternative to the subprocess spawn.
+
+import { query } from '@anthropic-ai/claude-agent-sdk'
+import { ANTHROPIC_MODEL } from '../models.js'
+
+export async function askAnthropicViaAgentSdk(prompt: string, systemPrompt?: string): Promise<string> {
+  let text = ''
+
+  const stream = query({
+    prompt,
+    options: {
+      model: ANTHROPIC_MODEL,
+      allowedTools: [],
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+      systemPrompt,
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([k]) => k !== 'ANTHROPIC_API_KEY')
+      ) as Record<string, string>,
+    },
+  })
+
+  for await (const message of stream) {
+    if (message.type === 'assistant') {
+      for (const block of message.message.content) {
+        if (block.type === 'text') text += block.text
+      }
+    }
+  }
+
+  return text
+}

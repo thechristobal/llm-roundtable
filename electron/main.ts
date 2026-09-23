@@ -1,9 +1,61 @@
 import { app, BrowserWindow, ipcMain, safeStorage, shell, utilityProcess, type UtilityProcess } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { spawn } from 'child_process'
 import net from 'net'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+
+const CLAUDE_CLI_ENABLED = process.env.ROUNDTABLE_DISABLE_CLAUDE_CLI !== '1'
+const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude'
+
+type ClaudeCliStatus = {
+  present: boolean
+  loggedIn: boolean
+  authMethod?: string
+  subscriptionType?: string
+}
+
+let claudeCliCache: ClaudeCliStatus = { present: false, loggedIn: false }
+
+function detectClaudeCli(): Promise<ClaudeCliStatus> {
+  return new Promise(resolve => {
+    // Windows: .cmd shims require shell: true since Node 18.20.2 (CVE-2024-27980).
+    const child = spawn(CLAUDE_BIN, ['auth', 'status'], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      shell: process.platform === 'win32',
+    })
+    let stdout = ''
+    child.stdout.on('data', d => { stdout += d })
+    child.on('error', () => resolve({ present: false, loggedIn: false }))
+    child.on('close', code => {
+      if (code !== 0) { resolve({ present: true, loggedIn: false }); return }
+      try {
+        const data = JSON.parse(stdout) as {
+          loggedIn?: boolean; authMethod?: string; subscriptionType?: string
+        }
+        resolve({
+          present: true,
+          loggedIn: !!data.loggedIn,
+          authMethod: data.authMethod,
+          subscriptionType: data.subscriptionType,
+        })
+      } catch {
+        resolve({ present: true, loggedIn: false })
+      }
+    })
+  })
+}
+
+function selectAnthropicBackend(
+  hasStoredKey: boolean,
+  cli: ClaudeCliStatus,
+): 'cli' | 'api' | 'none' {
+  if (hasStoredKey) return 'api'
+  if (CLAUDE_CLI_ENABLED && cli.present && cli.loggedIn) return 'cli'
+  return 'none'
+}
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined
 declare const MAIN_WINDOW_VITE_NAME: string
@@ -94,6 +146,9 @@ async function startServer() {
     catch { /* skip corrupt entry */ }
   }
 
+  claudeCliCache = await detectClaudeCli()
+  env.ROUNDTABLE_CLAUDE_BACKEND = selectAnthropicBackend(!!storedKeys.anthropic, claudeCliCache)
+
   serverProcess = utilityProcess.fork(serverScript, [], { env, stdio: 'pipe' })
   serverProcess.stdout?.on('data', (d: Buffer) => process.stdout.write(`[server] ${d}`))
   serverProcess.stderr?.on('data', (d: Buffer) => process.stderr.write(`[server] ${d}`))
@@ -118,12 +173,30 @@ ipcMain.handle('get-provider-status', async () => {
     codexAuth = !!(auth.tokens?.access_token || auth.apiKey)
   } catch { /* not logged in */ }
 
+  const anthropicConnected = !!keys.anthropic || (CLAUDE_CLI_ENABLED && claudeCliCache.present && claudeCliCache.loggedIn)
+
   return {
     openai: codexAuth || !!keys.openai,
-    anthropic: !!keys.anthropic,
+    anthropic: anthropicConnected,
+    anthropicKey: !!keys.anthropic,
     gemini: !!keys.gemini,
     codexAuth,
+    claudeCli: claudeCliCache,
+    cliEnabled: CLAUDE_CLI_ENABLED,
   }
+})
+
+ipcMain.handle('refresh-claude-cli', async () => {
+  claudeCliCache = await detectClaudeCli()
+  const keys = readKeys()
+  const newBackend = selectAnthropicBackend(!!keys.anthropic, claudeCliCache)
+  // Restart server so the backend env var takes effect for subsequent requests
+  await restartServer()
+  return { claudeCli: claudeCliCache, backend: newBackend }
+})
+
+ipcMain.handle('open-claude-cli-install-instructions', async () => {
+  await shell.openExternal('https://docs.claude.com/en/docs/claude-code/quickstart')
 })
 
 ipcMain.handle('set-api-key', async (_e, provider: string, key: string) => {

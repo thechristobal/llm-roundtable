@@ -30,7 +30,7 @@ This file is the source of truth for project state across sessions. Update it at
 | Desktop packaging | Electron + Electron Forge | Active — root-level electron/ + package.json |
 | Backend (local) | Express (Node) | esbuild-bundled single server.js, spawned as child process by Electron main |
 | OpenAI integration | @openai/codex-sdk + @openai/codex binary | Bundled platform binary; auth via codex login (ChatGPT subscription) |
-| Anthropic integration | @anthropic-ai/sdk | User API key, stored in OS keychain via Electron safeStorage |
+| Anthropic integration | Claude Code CLI subprocess (primary) + @anthropic-ai/sdk (fallback) | Subscription auth via the installed `claude` binary; optional user API key stored in OS keychain via Electron safeStorage |
 | Gemini integration | @google/generative-ai | User API key, stored in OS keychain via Electron safeStorage |
 | Auto-update | electron-updater + GitHub Releases | Windows now, Mac later |
 | Backend (hosted, future) | AWS Lambda + API Gateway | Separate story; for a future web-hosted version |
@@ -48,7 +48,7 @@ This file is the source of truth for project state across sessions. Update it at
 - **Electron + Express child process**: Express server is compiled to a single esbuild bundle and spawned as a child process by Electron's main process. Keeps server logic separate and unchanged; Electron manages lifecycle.
 - **User-owned credentials via OS keychain**: API keys for Anthropic and Gemini stored in OS keychain via Electron `safeStorage`. OpenAI handled via Codex App Server using user's ChatGPT subscription (codex login). Keys are never stored in plaintext or in any file the app controls.
 - **AWS is the web version story, not the desktop story**: Electron = desktop app, user pays their own API bills. AWS = future hosted web version. These are separate distribution paths, not the same thing.
-- **Anthropic subscription OAuth is off the table**: Officially banned for third-party apps and server-side blocked since January 2026. API key only for Anthropic.
+- **Anthropic subscription auth via Claude Code CLI subprocess**: Anthropic's Legal and Compliance page permits third-party apps to spawn the unmodified `claude` binary and let users sign in with their own subscription. Roundtable uses this as the primary path (subprocess spawn with composed safety flags; no credential reads/writes, no login UI). API key path preserved as an explicit alternative. Kill switch: `ROUNDTABLE_DISABLE_CLAUDE_CLI=1` in the Electron main env forces the API-key path only.
 - **OpenAI via Codex App Server**: Uses `@openai/codex-sdk` + bundled platform binary. User authenticates once via `codex login` (ChatGPT subscription, available on Free and all paid tiers). Agent constrained to text-only responses — no file access, shell commands, or coding tools during debates.
 
 ---
@@ -100,7 +100,7 @@ package.json       ← Root; Electron Forge config lives here
 | Provider | Auth method | Storage |
 |---|---|---|
 | OpenAI (ChatGPT) | Codex App Server — `codex login` (ChatGPT subscription) | `~/.codex/auth.json` (managed by Codex) |
-| Anthropic (Claude) | User API key | OS keychain via Electron `safeStorage` |
+| Anthropic (Claude) | Claude Code CLI subscription (primary) OR user API key (alternative) | CLI reads its own credentials (Roundtable never touches `~/.claude/`); API key in OS keychain via Electron `safeStorage` |
 | Gemini | User API key | OS keychain via Electron `safeStorage` |
 
 **First-run screen:** Single "Provider Setup" screen on first launch (or when any provider is unconfigured). All three providers visible simultaneously, each skippable. Codex shows a "Connect with ChatGPT" button; Anthropic and Gemini show paste fields with live validation. Green checkmark per provider on success.
@@ -262,4 +262,30 @@ Jev (TypeSafe AI System One) is an independent judge that evaluates each debate 
 - Settings: persistent header access, connection status per provider
 - Codex SDK research: determining exact text-only constraint config before implementation (pending)
 
-### Next session: Implement Electron scaffolding once Codex SDK research resolves
+### 2026-09-23 — Session 8: Electron shell + Claude Code CLI adapter
+
+- Electron shell smoke test passed: Settings opens, OpenAI shows connected via Codex, Gemini credential saves and persists, real Roundtable prompt completes end-to-end in Electron
+- Corrected prior wrong conclusion: Anthropic's Legal/Compliance page explicitly permits third-party apps to spawn the unmodified `claude` binary with user's subscription (hosting-platform carve-out). Subscription-via-CLI is a supported distribution path.
+- Discovery: existing `askAnthropic` was already using subscription auth via `@anthropic-ai/claude-agent-sdk` (env filter stripped `ANTHROPIC_API_KEY` before calling `query()`), meaning the "Anthropic API key" tile was a no-op. Fixed.
+- Adapter refactor:
+  - `server/src/models.ts` — centralized `ANTHROPIC_MODEL='claude-sonnet-5'`, `OPENAI_MODEL`, `GOOGLE_MODEL`
+  - `server/src/features.ts` — `CLAUDE_CLI_ENABLED` build-time flag with `ROUNDTABLE_DISABLE_CLAUDE_CLI=1` env kill switch
+  - `server/src/adapters/anthropic-cli.ts` — spawns `claude -p` with composed safety flags (`--tools ""`, `--disallowedTools mcp__*`, `--disable-slash-commands`, `--strict-mcp-config`, `--setting-sources project`, `--no-session-persistence`); `cwd: os.tmpdir()`, 120s timeout, JSON error mapping to QUOTA_EXCEEDED/CLAUDE_OVERLOADED
+  - `server/src/adapters/anthropic-api.ts` — real `@anthropic-ai/sdk` Messages call with system prompt support
+  - `server/src/adapters/anthropic.ts` — dispatcher reads `ROUNDTABLE_CLAUDE_BACKEND` env
+  - `server/src/adapters/anthropic-agent-sdk.ts.reference` — original SDK-agent code preserved (`.reference` suffix keeps esbuild out)
+- Electron main.ts: added `claude auth status` detection (parses `loggedIn`, `authMethod`, `subscriptionType` from JSON output; cache per session; refresh on Settings open). Passes `ROUNDTABLE_CLAUDE_BACKEND=cli|api|none` when spawning server based on stored key presence + CLI status.
+- Verified `--tools ""` genuinely blocks tool execution (side-effect test: Write tool did NOT create file despite model claiming it did — model self-reports about tool availability are unreliable, use side-effect verification)
+- Verified `--restricted` flag does NOT exist in claude 2.1.116 — composed the equivalent behavior with existing flags; noted `--restricted` as future single-flag collapse target
+- Verified `claude-sonnet-5` reachable directly (the `sonnet` alias still resolves to `claude-sonnet-4-6` in this CLI version — alias-updater lags)
+- UI: 5-state Anthropic tile in ProviderSetup — (1) CLI connected + subtitle, (2) CLI detected but logged out with terminal-command instructions, (3) CLI missing with API-key input + install link, (4) API key stored with optional "Switch to Claude Code" if CLI also available, (5) flag off hides all CLI copy. Per Anthropic condition #4 we only INSTRUCT terminal login — no login UI inside Roundtable.
+- 10 conditions from Anthropic terms verification we're honoring: don't modify/repackage `claude` binary; don't touch `~/.claude/`; don't restrict CLI's built-in auth methods; no Login-with-Claude UI; no spoofed client_id/User-Agent; don't bill users for Claude usage; trademark hygiene (tile stays "Claude" as nominative fair use, subtitle discloses backend); agree to Anthropic Commercial Terms of Service at distribution time; don't encourage abnormal usage; feature flag kill switch retained
+
+### 2026-09-23 — Session 9: Windows spawn bugs, Codex bundle path, credential-airtight packaging
+
+- Fixed two integration bugs discovered in first end-to-end smoke test of Session 8 code:
+  1. **Claude CLI dropped the system prompt on Windows.** Root cause: `spawn('claude.cmd', args, { shell: true })` on Windows routes every arg through cmd.exe's parser, which silently mangles long multi-line strings. Fix: resolve the `.cmd` shim to the real `claude.exe` (native .exe living next to the shim; path scraped from shim contents) and spawn that directly — no `shell: true`, no cmd interpolation. Additionally switched from `--system-prompt <string>` to `--system-prompt-file <path>` writing to a per-call tempfile (cleaned up on close/timeout/error). The `-file` variants aren't in the main `--help` output but are functional and documented in the `--bare` help section. Prompt text never touches argv now.
+  2. **Codex SDK could not locate its binary after esbuild bundled it.** Root cause: `@openai/codex-sdk` uses `createRequire(import.meta.url).resolve('@openai/codex/package.json')`; after esbuild bundles the SDK into `electron/resources/server.js`, that require is rooted at `electron/resources/` where the `@openai/codex*` packages don't exist (they're in `server/node_modules/`). Fix: pass `codexPathOverride` to the `Codex` constructor with a resolver that walks up 10 dir levels from `__dirname` looking for `node_modules/<platform-pkg>/vendor/<triple>/bin/codex[.exe]`, plus cwd-based backstop.
+- End-to-end verification: probed all three providers via `POST /api/ask` with a system-prompt-sensitive question ("who are you and who are you competing against"). Each returned its correct identity plus named the other two competitors → system prompt reached in all three cases.
+- Packaging credential-airtight: added `packagerConfig.ignore` predicate excluding dotenv family, `auth.json`, `provider-keys.json`, `.claude/`, `.rtf`, and `CONTEXT.md`. Verified by running `npm run package` and grepping the produced `out/llm-roundtable-win32-x64/` tree three ways: (a) `find` for filename patterns → 0 hits; (b) grep for actual dev API key values in `server.js` + `app.asar` → 0 hits; (c) `@electron/asar list` (16,149-file manifest) for sensitive names → 0 hits.
+- Distribution-safety recap: shipped app has zero path to my credentials. Claude reads `claude auth status` on user's PATH; Codex reads user's `~/.codex/auth.json`; API keys stored per-user via Electron `safeStorage` in userData. Packaged Electron main deliberately starts server with a clean env (no dotenv inheritance) — dev-time inheritance path is dev-only.

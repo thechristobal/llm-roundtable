@@ -13,6 +13,25 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     extraResource: ['electron/resources/server.js'],
+    // Airtight blacklist so no local credentials, dotenv files, or auth blobs
+    // ever enter the distributable. electron-packager passes each candidate
+    // path (leading slash, forward-slash separators) to this predicate;
+    // returning true excludes it.
+    ignore: (filePath: string) => {
+      if (!filePath) return false
+      // dotenv family: .env, .env.local, .env.production, etc. at any depth
+      if (/\/\.env($|\..+$)/.test(filePath)) return true
+      // Codex CLI credential file if a user happened to symlink one into repo
+      if (/\/auth\.json$/.test(filePath)) return true
+      // Roundtable's own stored-key file (should live in userData, but paranoid)
+      if (/\/provider-keys\.json$/.test(filePath)) return true
+      // Vendored .claude/ folders (agent internals, transcripts, memory)
+      if (/(^|\/)\.claude($|\/)/.test(filePath)) return true
+      // Personal notes / docs not meant to ship
+      if (/\.rtf$/.test(filePath)) return true
+      if (/(^|\/)CONTEXT\.md$/.test(filePath)) return true
+      return false
+    },
   },
   rebuildConfig: {},
   makers: [

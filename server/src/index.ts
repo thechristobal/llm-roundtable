@@ -4,9 +4,10 @@ import { resolve } from 'path'
 dotenv.config({ path: resolve(__dirname, '../.env.local') })
 dotenv.config({ path: resolve(__dirname, '../../server/.env.local') })
 import express from 'express'
-import { askAnthropic, MODEL as ANTHROPIC_MODEL } from './adapters/anthropic.js'
-import { askGoogle, MODEL as GOOGLE_MODEL } from './adapters/google.js'
-import { askOpenAI, MODEL as OPENAI_MODEL } from './adapters/openai.js'
+import { askAnthropic } from './adapters/anthropic.js'
+import { askGoogle } from './adapters/google.js'
+import { askOpenAI } from './adapters/openai.js'
+import { ANTHROPIC_MODEL, GOOGLE_MODEL, OPENAI_MODEL } from './models.js'
 
 const PROVIDER_MODELS: Record<string, string> = {
   openai: OPENAI_MODEL,
@@ -90,6 +91,8 @@ app.post('/api/ask', async (req, res) => {
       res.status(429).json({ error: 'Quota exhausted — free tier limit reached. Try again tomorrow or upgrade your API key.' })
     } else if (message.startsWith('GEMINI_OVERLOADED:')) {
       res.status(503).json({ error: 'Gemini is experiencing high demand. Try again in a moment.' })
+    } else if (message.startsWith('CLAUDE_OVERLOADED:')) {
+      res.status(503).json({ error: 'Claude is experiencing high demand. Try again in a moment.' })
     } else {
       res.status(500).json({ error: message || 'Unknown error' })
     }
@@ -134,6 +137,8 @@ app.post('/api/debate/ask', async (req, res) => {
       res.status(429).json({ error: 'Quota exhausted — free tier limit reached. Try again tomorrow or upgrade your API key.' })
     } else if (message.startsWith('GEMINI_OVERLOADED:')) {
       res.status(503).json({ error: 'Gemini is experiencing high demand. Try again in a moment.' })
+    } else if (message.startsWith('CLAUDE_OVERLOADED:')) {
+      res.status(503).json({ error: 'Claude is experiencing high demand. Try again in a moment.' })
     } else {
       res.status(500).json({ error: message || 'Unknown error' })
     }
