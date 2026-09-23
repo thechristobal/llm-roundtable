@@ -1,5 +1,8 @@
 import dotenv from 'dotenv'
-dotenv.config({ path: '.env.local' })
+import { resolve } from 'path'
+// Works from server/src/ (dev) and from electron/resources/ (bundled)
+dotenv.config({ path: resolve(__dirname, '../.env.local') })
+dotenv.config({ path: resolve(__dirname, '../../server/.env.local') })
 import express from 'express'
 import { askAnthropic, MODEL as ANTHROPIC_MODEL } from './adapters/anthropic.js'
 import { askGoogle, MODEL as GOOGLE_MODEL } from './adapters/google.js'

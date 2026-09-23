@@ -79,11 +79,12 @@ async function startServer() {
     ? path.join(process.resourcesPath, 'server.js')
     : path.resolve(app.getAppPath(), 'electron/resources/server.js')
 
-  const env: NodeJS.ProcessEnv = {
-    PORT: String(serverPort),
-    HOST: '127.0.0.1',
-    NODE_ENV: app.isPackaged ? 'production' : 'development',
-  }
+  // In dev, inherit parent env so server's own dotenv can still find keys
+  // from server/.env.local when running without stored credentials.
+  // In packaged builds, start clean — only explicitly-stored keys are in scope.
+  const env: NodeJS.ProcessEnv = app.isPackaged
+    ? { PORT: String(serverPort), HOST: '127.0.0.1', NODE_ENV: 'production' }
+    : { ...process.env, PORT: String(serverPort), HOST: '127.0.0.1', NODE_ENV: 'development' }
 
   const storedKeys = readKeys()
   for (const [provider, encrypted] of Object.entries(storedKeys)) {

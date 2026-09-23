@@ -6,7 +6,7 @@ import { defineConfig } from 'vite'
 
 const CSP_DEV = [
   "default-src 'none'",
-  "script-src 'self' 'unsafe-eval'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* ws://localhost:*",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
