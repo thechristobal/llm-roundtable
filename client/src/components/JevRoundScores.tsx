@@ -31,7 +31,7 @@ export default function JevRoundScores({ result, userVotes, onVote }: Props) {
           <span className="text-xs text-red-500 truncate">{result.message}</span>
         )}
         {result.status === 'complete' && result.mock && (
-          <span className="text-[9px] text-[#2a2a38]">mock</span>
+          <span className="text-[9px] text-[#4a4a5a]">demo</span>
         )}
       </div>
 
@@ -80,7 +80,16 @@ export default function JevRoundScores({ result, userVotes, onVote }: Props) {
                 })()}
                 <div className="flex justify-between text-[10px] border-t border-[#1e1e2e] mt-1 pt-1">
                   <span className="text-[#6b7280] font-medium">Overall</span>
-                  <span className="text-[#e8e8f0] font-semibold">{p.overall.toFixed(1)}</span>
+                  {p.disqualified ? (
+                    <span
+                      className="text-red-400 font-semibold cursor-help"
+                      title="Disqualified for this round: response failed Task Adherence and is ineligible to win regardless of dimension scores. Whole-debate Judge may still consider recovery in later rounds."
+                    >
+                      DQ
+                    </span>
+                  ) : (
+                    <span className="text-[#e8e8f0] font-semibold">{p.overall.toFixed(1)}</span>
+                  )}
                 </div>
               </div>
             )

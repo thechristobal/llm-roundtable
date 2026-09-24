@@ -50,10 +50,20 @@ function mockResponse(questions: Record<string, JevQuestion>): JevResponse {
       answers[key] = { type: 'score', score: mockScoreFor(key), confidence: 0.70 }
     } else if (q.type === 'choice') {
       const opts = Object.keys(q.criteria)
-      const winner = opts.find(o => o !== 'tie') ?? opts[0]
-      const even = (1 - 0.55) / (opts.length - 1)
-      const probs = Object.fromEntries(opts.map(o => [o, o === winner ? 0.55 : even]))
-      answers[key] = { type: 'choice', choice: winner, confidence: 0.55, probabilities: probs }
+      // Derive the winner from the same mock overall scores that populate the
+      // scorecard so Verdict can never contradict what the user sees. Falls
+      // back to the first non-tie option only if there are no provider opts.
+      const providerOpts = opts.filter(o => o !== 'tie')
+      const scoreOf = (p: string) => mockScoreFor(`${p}_overall`)
+      const winner = providerOpts.length
+        ? providerOpts.reduce((best, cur) => (scoreOf(cur) > scoreOf(best) ? cur : best))
+        : opts[0]
+      const ranked = providerOpts.map(scoreOf).sort((a, b) => b - a)
+      const margin = (ranked[0] ?? 0) - (ranked[1] ?? 0)
+      const confidence = Math.max(0.35, Math.min(0.95, 0.5 + margin * 0.5))
+      const even = (1 - confidence) / (opts.length - 1)
+      const probs = Object.fromEntries(opts.map(o => [o, o === winner ? confidence : even]))
+      answers[key] = { type: 'choice', choice: winner, confidence, probabilities: probs }
     } else {
       const noul = key.endsWith('_eq_burden') ? 0.7  // burden exists: EQ applies
                : key.endsWith('_fabrication') ? 0.1  // no fabrication

@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, safeStorage, shell, utilityProcess, type UtilityProcess } from 'electron'
+import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { spawn } from 'child_process'
+import { spawn, type ChildProcess } from 'child_process'
 import net from 'net'
 import path from 'path'
 import fs from 'fs'
@@ -92,6 +92,20 @@ async function validateApiKey(provider: string, key: string): Promise<{ ok: bool
       res = await fetch('https://api.openai.com/v1/models', {
         headers: { Authorization: `Bearer ${key}` },
       })
+    } else if (provider === 'typesafe') {
+      // Jev has no lightweight /models endpoint — probe with a trivial noul
+      // question. Cost is negligible and this catches bad keys before save.
+      res = await fetch('https://api.typesafe.ai/v1/systemone', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          state: { probe: true },
+          model: 'jev-latest',
+          questions: {
+            probe: { type: 'noul', instructions: 'Probe.', criteria: { true: 't', false: 'f' } },
+          },
+        }),
+      })
     } else {
       return { ok: false, error: `Unknown provider: ${provider}` }
     }
@@ -105,7 +119,7 @@ async function validateApiKey(provider: string, key: string): Promise<{ ok: bool
 // ─── Server process ───────────────────────────────────────────────────────────
 
 let serverPort = 0
-let serverProcess: UtilityProcess | null = null
+let serverProcess: ChildProcess | null = null
 
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -122,10 +136,15 @@ const PROVIDER_ENV: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   gemini: 'GOOGLE_API_KEY',
   openai: 'OPENAI_API_KEY',
+  typesafe: 'TYPESAFE_API_KEY',
 }
 
 async function startServer() {
-  serverPort = await getFreePort()
+  // Pick the port ONCE at first startup and reuse it across restarts. The
+  // renderer reads window.electronAPI.serverPort synchronously at page load
+  // and never re-fetches, so a fresh port after every key change would
+  // silently orphan the renderer's API base URL.
+  if (!serverPort) serverPort = await getFreePort()
 
   const serverScript = app.isPackaged
     ? path.join(process.resourcesPath, 'server.js')
@@ -149,14 +168,33 @@ async function startServer() {
   claudeCliCache = await detectClaudeCli()
   env.ROUNDTABLE_CLAUDE_BACKEND = selectAnthropicBackend(!!storedKeys.anthropic, claudeCliCache)
 
-  serverProcess = utilityProcess.fork(serverScript, [], { env, stdio: 'pipe' })
+  // utilityProcess.fork can't bind TCP sockets on Windows (UV_UNKNOWN on
+  // listen), so run the server as a plain Node process by re-executing the
+  // Electron binary with ELECTRON_RUN_AS_NODE=1. Same runtime, works.
+  serverProcess = spawn(process.execPath, [serverScript], {
+    env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
   serverProcess.stdout?.on('data', (d: Buffer) => process.stdout.write(`[server] ${d}`))
   serverProcess.stderr?.on('data', (d: Buffer) => process.stderr.write(`[server] ${d}`))
+  serverProcess.on('spawn', () => console.log(`[server] child process spawned pid=${serverProcess?.pid}`))
+  serverProcess.on('exit', code => console.warn(`[server] child process exited code=${code}`))
 }
 
 async function restartServer() {
-  serverProcess?.kill()
-  await new Promise(r => setTimeout(r, 150))
+  // Wait for the old process to actually exit before spawning a new one — a
+  // bare setTimeout wasn't long enough on Windows, so the new server would
+  // race the old one's still-bound socket and fail with EADDRINUSE. The exit
+  // event fires only after the OS releases the listening socket.
+  if (serverProcess && serverProcess.exitCode === null) {
+    const p = serverProcess
+    await new Promise<void>(resolve => {
+      p.once('exit', () => resolve())
+      p.kill()
+    })
+  }
+  serverProcess = null
   await startServer()
 }
 
@@ -180,6 +218,7 @@ ipcMain.handle('get-provider-status', async () => {
     anthropic: anthropicConnected,
     anthropicKey: !!keys.anthropic,
     gemini: !!keys.gemini,
+    typesafe: !!keys.typesafe,
     codexAuth,
     claudeCli: claudeCliCache,
     cliEnabled: CLAUDE_CLI_ENABLED,
@@ -247,7 +286,12 @@ function createWindow() {
     win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
     win.webContents.openDevTools()
   } else {
-    win.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`))
+    // client/vite.config.ts sets root: client/, so Forge's Vite plugin writes
+    // the renderer bundle to client/.vite/renderer/<name>/ (not the standard
+    // project-root .vite/renderer/). __dirname in packaged app is
+    // resources/app.asar/.vite/build/, so we back out two levels and dive
+    // into client/.vite/renderer/<name>/.
+    win.loadFile(path.join(__dirname, '..', '..', 'client', '.vite', 'renderer', MAIN_WINDOW_VITE_NAME, 'index.html'))
   }
 
   return win
@@ -258,7 +302,12 @@ function createWindow() {
 app.whenReady().then(async () => {
   await startServer()
   createWindow()
-  if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify()
+  if (app.isPackaged) {
+    // No publish target configured yet — swallow "app-update.yml missing"
+    // and any other update errors so the app doesn't emit unhandled rejections.
+    autoUpdater.on('error', err => console.warn('[autoUpdater]', err.message))
+    autoUpdater.checkForUpdatesAndNotify().catch(err => console.warn('[autoUpdater]', err.message))
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ClaudeCliStatus, ProviderStatus } from '../electron'
 
-type ProviderID = 'openai' | 'anthropic' | 'gemini'
+type ProviderID = 'openai' | 'anthropic' | 'gemini' | 'typesafe'
 type ProviderState = { status: 'idle' | 'saving' | 'connected' | 'error'; message?: string }
 
 const PROVIDERS: Record<ProviderID, { name: string; accentColor: string; keyLabel: string; keyHint: string }> = {
@@ -23,9 +23,15 @@ const PROVIDERS: Record<ProviderID, { name: string; accentColor: string; keyLabe
     keyLabel: 'Google AI Studio key',
     keyHint: 'aistudio.google.com → Get API key',
   },
+  typesafe: {
+    name: 'Jev',
+    accentColor: '#a78bfa',
+    keyLabel: 'TypeSafe API key',
+    keyHint: 'typesafe.ai → API keys. Optional — without a key, Jev runs in demo mode with fixed illustrative scores.',
+  },
 }
 
-const ORDER: ProviderID[] = ['openai', 'anthropic', 'gemini']
+const DEBATER_ORDER: ProviderID[] = ['openai', 'anthropic', 'gemini']
 
 type Props = {
   mode?: 'setup' | 'settings'
@@ -38,8 +44,9 @@ export default function ProviderSetup({ mode = 'setup', onComplete, onClose }: P
     openai: { status: 'idle' },
     anthropic: { status: 'idle' },
     gemini: { status: 'idle' },
+    typesafe: { status: 'idle' },
   })
-  const [keys, setKeys] = useState<Record<ProviderID, string>>({ openai: '', anthropic: '', gemini: '' })
+  const [keys, setKeys] = useState<Record<ProviderID, string>>({ openai: '', anthropic: '', gemini: '', typesafe: '' })
   const [claudeCli, setClaudeCli] = useState<ClaudeCliStatus>({ present: false, loggedIn: false })
   const [cliEnabled, setCliEnabled] = useState<boolean>(true)
   const [anthropicKey, setAnthropicKey] = useState<boolean>(false)
@@ -55,13 +62,15 @@ export default function ProviderSetup({ mode = 'setup', onComplete, onClose }: P
       openai: s.openai ? { status: 'connected' } : prev.openai,
       anthropic: s.anthropic ? { status: 'connected' } : { status: 'idle' },
       gemini: s.gemini ? { status: 'connected' } : prev.gemini,
+      typesafe: s.typesafe ? { status: 'connected' } : { status: 'idle' },
     }))
     setClaudeCli(s.claudeCli)
     setCliEnabled(s.cliEnabled)
     setAnthropicKey(s.anthropicKey)
   }
 
-  const anyConnected = ORDER.some(id => states[id].status === 'connected')
+  // Continue button only requires a debater — Jev is optional.
+  const anyConnected = DEBATER_ORDER.some(id => states[id].status === 'connected')
 
   async function handleSave(id: ProviderID) {
     const key = keys[id].trim()
@@ -116,7 +125,7 @@ export default function ProviderSetup({ mode = 'setup', onComplete, onClose }: P
           </div>
 
           <div className="flex flex-col gap-4">
-            {ORDER.map(id => {
+            {DEBATER_ORDER.map(id => {
               if (id === 'anthropic') {
                 return (
                   <AnthropicTile
@@ -150,6 +159,25 @@ export default function ProviderSetup({ mode = 'setup', onComplete, onClose }: P
                 />
               )
             })}
+          </div>
+
+          <div className="mt-6 mb-2 flex items-center gap-3">
+            <div className="flex-1 h-px bg-[#2a2a38]" />
+            <span className="text-[10px] uppercase tracking-wider text-[#6b7280]">Referee (optional)</span>
+            <div className="flex-1 h-px bg-[#2a2a38]" />
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <GenericTile
+              id="typesafe"
+              mode={mode}
+              state={states.typesafe}
+              keyValue={keys.typesafe}
+              onKeyChange={v => setKeys(prev => ({ ...prev, typesafe: v }))}
+              onKeyDown={e => handleKeyDown(e, 'typesafe')}
+              onSave={() => handleSave('typesafe')}
+              onDisconnect={() => handleDisconnect('typesafe')}
+            />
           </div>
 
           <div className="mt-8 flex justify-end gap-3">

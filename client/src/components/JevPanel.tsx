@@ -21,7 +21,7 @@ export default function JevPanel({ result }: { result: JevFinalResult }) {
         <span className="text-sm font-semibold text-[#e8e8f0]">Jev's Verdict</span>
         <div className="flex items-center gap-3">
           {result.status === 'complete' && result.mock && (
-            <span className="text-[9px] text-[#2a2a38]">mock — TYPESAFE_API_KEY not set</span>
+            <span className="text-[9px] text-[#4a4a5a]">demo mode — add a Jev key in Settings for real scoring</span>
           )}
           {result.status !== 'loading' && (
             <button

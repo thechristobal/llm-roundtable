@@ -11,7 +11,11 @@ const { VitePlugin } = require('@electron-forge/plugin-vite')
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    // Unpack native binaries so Node can spawn them at runtime — spawning
+    // executables from inside the asar virtual filesystem fails silently.
+    // Covers @openai/codex-* (codex.exe, rg.exe, code-mode-host.exe) and
+    // @anthropic-ai/claude-agent-sdk-* (claude.exe) platform packages.
+    asar: { unpack: '**/*.{exe,dll,node,dylib,so}' },
     extraResource: ['electron/resources/server.js'],
     // Airtight blacklist so no local credentials, dotenv files, or auth blobs
     // ever enter the distributable. electron-packager passes each candidate
@@ -30,6 +34,13 @@ const config: ForgeConfig = {
       // Personal notes / docs not meant to ship
       if (/\.rtf$/.test(filePath)) return true
       if (/(^|\/)CONTEXT\.md$/.test(filePath)) return true
+      // Renderer is bundled into .vite/renderer/main_window by vite; the raw
+      // client/node_modules tree (~145 MB of React/Vite dev deps) is dead
+      // weight in the packaged app.
+      if (/^\/client\/node_modules($|\/)/.test(filePath)) return true
+      // Local git history and Claude Code agent scratch space
+      if (/^\/\.git($|\/)/.test(filePath)) return true
+      if (/^\/\.agents($|\/)/.test(filePath)) return true
       return false
     },
   },
