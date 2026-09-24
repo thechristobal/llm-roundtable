@@ -12,6 +12,7 @@ export type ProviderStatus = {
   anthropic: boolean
   anthropicKey: boolean
   gemini: boolean
+  typesafe: boolean
   codexAuth: boolean
   claudeCli: ClaudeCliStatus
   cliEnabled: boolean

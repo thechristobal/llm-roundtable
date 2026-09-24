@@ -9,7 +9,7 @@ type ClaudeCliStatus = {
 
 type ProviderStatus = {
   openai: boolean; anthropic: boolean; anthropicKey: boolean
-  gemini: boolean; codexAuth: boolean
+  gemini: boolean; typesafe: boolean; codexAuth: boolean
   claudeCli: ClaudeCliStatus; cliEnabled: boolean
 }
 

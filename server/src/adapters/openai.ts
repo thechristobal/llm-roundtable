@@ -36,6 +36,11 @@ function candidateNodeModulesRoots(): string[] {
   for (let i = 0; i < 10; i++) {
     roots.add(path.join(dir, 'node_modules'))
     roots.add(path.join(dir, 'server', 'node_modules'))
+    // Packaged Electron: server.js sits in resources/, and the codex platform
+    // package lives inside resources/app.asar.unpacked/server/node_modules
+    // (unpacked because .exe files can't be spawned from asar's virtual FS).
+    roots.add(path.join(dir, 'app.asar.unpacked', 'server', 'node_modules'))
+    roots.add(path.join(dir, 'app.asar.unpacked', 'node_modules'))
     const parent = path.dirname(dir)
     if (parent === dir) break
     dir = parent

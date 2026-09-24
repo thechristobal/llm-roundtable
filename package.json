@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "ChatGPT, Claude, and Gemini debate in parallel",
+  "author": "Christobal",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",

@@ -205,7 +205,12 @@ app.post('/api/judge/round', async (req, res) => {
         noul: answers[`${p}_relevance`]?.noul ?? 0,
         confidence: answers[`${p}_relevance`]?.confidence ?? 0,
       }
-      providers[p] = { ...dimScores, relevance, overall, eqAnchored, fabricationDetected, contradictionDetected, suspectedFabrication: [] as string[] }
+      // Task Adherence is a gate, not a weighted dimension: if the response
+      // failed to engage with the prompt, it's DQ'd for the round regardless
+      // of how well-argued the off-topic content was. Whole-debate winner
+      // ignores this — recovery across later rounds is Jev's call in /final.
+      const disqualified = relevance.noul >= 0.5
+      providers[p] = { ...dimScores, relevance, overall, eqAnchored, fabricationDetected, contradictionDetected, disqualified, suspectedFabrication: [] as string[] }
     }
 
     // Localize fabrication spans for flagged providers (non-blocking)
@@ -262,4 +267,5 @@ app.post('/api/judge/final', async (req, res) => {
 
 const port = process.env.PORT ?? 3001
 const host = process.env.HOST ?? '0.0.0.0'
-app.listen(Number(port), host, () => console.log(`Server running on ${host}:${port}`))
+const httpServer = app.listen(Number(port), host, () => console.log(`Server running on ${host}:${port}`))
+httpServer.on('error', err => console.error('[server] listen error', err))

@@ -8,7 +8,9 @@ This file is the source of truth for project state across sessions. Update it at
 
 **Roundtable** (repo: `llm-roundtable`) is a desktop application where users submit a prompt and multiple LLMs (ChatGPT, Claude, Gemini) respond in parallel, then debate and critique each other across multiple rounds.
 
-**Purpose:** Portfolio project targeting a job at Vynyl. Meant to demonstrate hands-on experience with AI orchestration, AWS serverless, TypeScript, and good architecture thinking.
+**Purpose:** Portfolio project targeting a job at Vynyl. Meant to demonstrate hands-on experience with AI orchestration, Electron desktop packaging, TypeScript, and good architecture thinking.
+
+**Note on AWS:** Early planning discussed an AWS-hosted web version as a follow-on. It has not been implemented and is out of scope for the current desktop distribution. Do not describe AWS as part of the current architecture.
 
 ---
 
@@ -27,15 +29,14 @@ This file is the source of truth for project state across sessions. Update it at
 | Layer | Tech | Notes |
 |---|---|---|
 | Frontend | React + TypeScript + Vite | Runs as Electron renderer in packaged app |
-| Desktop packaging | Electron + Electron Forge | Active — root-level electron/ + package.json |
-| Backend (local) | Express (Node) | esbuild-bundled single server.js, spawned as child process by Electron main |
+| Desktop packaging | Electron + Electron Forge (Squirrel Windows) | Active — root-level electron/ + package.json |
+| Backend (local) | Express (Node) | esbuild-bundled single server.js, spawned via `child_process.spawn` under Electron main with `ELECTRON_RUN_AS_NODE=1` |
 | OpenAI integration | @openai/codex-sdk + @openai/codex binary | Bundled platform binary; auth via codex login (ChatGPT subscription) |
 | Anthropic integration | Claude Code CLI subprocess (primary) + @anthropic-ai/sdk (fallback) | Subscription auth via the installed `claude` binary; optional user API key stored in OS keychain via Electron safeStorage |
 | Gemini integration | @google/generative-ai | User API key, stored in OS keychain via Electron safeStorage |
-| Auto-update | electron-updater + GitHub Releases | Windows now, Mac later |
-| Backend (hosted, future) | AWS Lambda + API Gateway | Separate story; for a future web-hosted version |
-| Database (future) | AWS DynamoDB | Session storage for web version |
-| Streaming | SSE or WebSockets | Planned, not yet implemented |
+| Jev (referee) integration | TypeSafe System One (BYO) | User API key, stored in OS keychain via Electron safeStorage; absent → app falls back to demo/mock scoring |
+| Auto-update | Not implemented | `electron-updater` is wired but no publish target yet; app swallows the missing `app-update.yml` error |
+| Streaming | Not implemented | Per-panel progressive reveal only |
 
 ---
 
@@ -47,7 +48,7 @@ This file is the source of truth for project state across sessions. Update it at
 - **No Grok**: User explicitly does not want to give Elon Musk money.
 - **Electron + Express child process**: Express server is compiled to a single esbuild bundle and spawned as a child process by Electron's main process. Keeps server logic separate and unchanged; Electron manages lifecycle.
 - **User-owned credentials via OS keychain**: API keys for Anthropic and Gemini stored in OS keychain via Electron `safeStorage`. OpenAI handled via Codex App Server using user's ChatGPT subscription (codex login). Keys are never stored in plaintext or in any file the app controls.
-- **AWS is the web version story, not the desktop story**: Electron = desktop app, user pays their own API bills. AWS = future hosted web version. These are separate distribution paths, not the same thing.
+- **Desktop-only for now, no hosted backend**: Users pay their own API bills; the app talks directly to providers from their machine. An AWS-hosted web version was scoped early but is not implemented and is not part of the current architecture.
 - **Anthropic subscription auth via Claude Code CLI subprocess**: Anthropic's Legal and Compliance page permits third-party apps to spawn the unmodified `claude` binary and let users sign in with their own subscription. Roundtable uses this as the primary path (subprocess spawn with composed safety flags; no credential reads/writes, no login UI). API key path preserved as an explicit alternative. Kill switch: `ROUNDTABLE_DISABLE_CLAUDE_CLI=1` in the Electron main env forces the API-key path only.
 - **OpenAI via Codex App Server**: Uses `@openai/codex-sdk` + bundled platform binary. User authenticates once via `codex login` (ChatGPT subscription, available on Free and all paid tiers). Agent constrained to text-only responses — no file access, shell commands, or coding tools during debates.
 
@@ -102,15 +103,18 @@ package.json       ← Root; Electron Forge config lives here
 | OpenAI (ChatGPT) | Codex App Server — `codex login` (ChatGPT subscription) | `~/.codex/auth.json` (managed by Codex) |
 | Anthropic (Claude) | Claude Code CLI subscription (primary) OR user API key (alternative) | CLI reads its own credentials (Roundtable never touches `~/.claude/`); API key in OS keychain via Electron `safeStorage` |
 | Gemini | User API key | OS keychain via Electron `safeStorage` |
+| Jev (TypeSafe) | User API key (optional; absent → demo/mock scoring) | OS keychain via Electron `safeStorage` |
 
 **First-run screen:** Single "Provider Setup" screen on first launch (or when any provider is unconfigured). All three providers visible simultaneously, each skippable. Codex shows a "Connect with ChatGPT" button; Anthropic and Gemini show paste fields with live validation. Green checkmark per provider on success.
 
 **Settings:** Persistent settings access from the main UI header. Shows connection status per provider; allows re-auth, key rotation, and disconnect.
 
 **Packaging:**
-- Windows: Squirrel installer via Electron Forge, auto-update via `electron-updater` + GitHub Releases
-- Mac: Planned for later
-- Server: esbuild bundle → single `server.js` in app resources; spawned with Electron's bundled Node
+- Windows: Squirrel installer via Electron Forge — validated end-to-end in a packaged build
+- Mac: Not built yet
+- Code signing: Not implemented — installer is unsigned and triggers SmartScreen ("More info → Run anyway"). Documented in the README; revisit Azure Trusted Signing if real-user distribution warrants it.
+- Auto-update: `electron-updater` wired but no publish target yet
+- Server: esbuild bundle → single `server.js` in app resources; spawned via `child_process.spawn(process.execPath, [serverScript], { env: { ...env, ELECTRON_RUN_AS_NODE: '1' } })` because `utilityProcess.fork` cannot bind TCP sockets on Windows (UV_UNKNOWN errno -4094 on `listen`)
 
 ---
 
@@ -127,7 +131,7 @@ Jev (TypeSafe AI System One) is an independent judge that evaluates each debate 
 | Precision | 5% | Specificity of empirical claims (low weight: Jev can't fact-check) |
 
 **Special flags (noul questions):**
-- **Task Adherence**: Pass/fail — did the model actually answer what was asked?
+- **Task Adherence** (hard gate — DQ): If the response failed to engage with the prompt, it is disqualified for that round regardless of dimension scores. Overall cell shows "DQ" in the round scorecard. Individual dim scores remain visible for diagnostic value. Whole-debate winner is not mechanically gated — Jev can weigh recovery across later rounds. Semantics of the underlying `relevance.noul` field were verified against real Jev responses (off-topic probe → noul 0.99, on-topic probe → noul 0.02).
 - **EQ Anchor**: If no evidentiary burden incurred, Precision score anchored to 5.0
 - **Contradiction cap**: If material self-contradiction detected, Coherence capped at 1.0
 - **Fabrication detection** (experimental): Caps Precision at 1.0 and IH at 3.0 if fired; triggers follow-up span-localization call; highlights suspected spans in UI with "unverified claim — in testing" tooltip
@@ -167,13 +171,16 @@ Jev (TypeSafe AI System One) is an independent judge that evaluates each debate 
 
 ---
 
-## Setup Checklist (not yet started as of session 1)
+## Setup Checklist
 
-- [ ] Create GitHub repo: `llm-roundtable`
-- [ ] Set up AWS account
-- [ ] Obtain API keys: OpenAI, Anthropic, Gemini (accounts exist, keys not yet generated)
-- [ ] Initialize project (React + TypeScript)
-- [ ] Set up Electron Forge (deferred)
+- [x] Create GitHub repo: `llm-roundtable`
+- [x] Obtain API keys: OpenAI, Anthropic, Gemini
+- [x] Initialize project (React + TypeScript)
+- [x] Set up Electron Forge
+- [x] Windows packaged build validated end-to-end
+- [ ] Clean-machine install test (blocks any further feature work)
+- [ ] GitHub Release with Windows installer
+- [ ] 60–90s Loom demo (not a blocker)
 
 ---
 
@@ -289,3 +296,40 @@ Jev (TypeSafe AI System One) is an independent judge that evaluates each debate 
 - End-to-end verification: probed all three providers via `POST /api/ask` with a system-prompt-sensitive question ("who are you and who are you competing against"). Each returned its correct identity plus named the other two competitors → system prompt reached in all three cases.
 - Packaging credential-airtight: added `packagerConfig.ignore` predicate excluding dotenv family, `auth.json`, `provider-keys.json`, `.claude/`, `.rtf`, and `CONTEXT.md`. Verified by running `npm run package` and grepping the produced `out/llm-roundtable-win32-x64/` tree three ways: (a) `find` for filename patterns → 0 hits; (b) grep for actual dev API key values in `server.js` + `app.asar` → 0 hits; (c) `@electron/asar list` (16,149-file manifest) for sensitive names → 0 hits.
 - Distribution-safety recap: shipped app has zero path to my credentials. Claude reads `claude auth status` on user's PATH; Codex reads user's `~/.codex/auth.json`; API keys stored per-user via Electron `safeStorage` in userData. Packaged Electron main deliberately starts server with a clean env (no dotenv inheritance) — dev-time inheritance path is dev-only.
+
+### 2026-09-23 — Session 10: Packaged-build validation, BYO Jev, DQ gate
+
+Full run at packaged Windows build validation, followed by two product fixes and one distribution hardening pass.
+
+**Packaging bugs found and fixed in the packaged Windows build:**
+- `utilityProcess.fork` cannot bind TCP sockets on Windows (UV_UNKNOWN errno -4094 on `listen`). Switched to `child_process.spawn(process.execPath, [serverScript], { env: { ...env, ELECTRON_RUN_AS_NODE: '1' } })` — re-executes Electron as plain Node, same runtime, works.
+- Squirrel installer required `Authors` field in the generated nuspec — added `"author": "Christobal"` to `package.json`.
+- Bundled platform binaries (`codex.exe`, `claude.cmd`) were trapped in asar and unspawnable. `AutoUnpackNativesPlugin` only unpacks `.node` files (glob `**/{.**,**}/**/*.node`). Added `packagerConfig.asar.unpack: '**/*.{exe,dll,node,dylib,so}'` for all platform binaries.
+- Codex SDK's `findCodexBinary()` couldn't locate its unpacked binary. Extended `candidateNodeModulesRoots()` in `openai.ts` to walk `app.asar.unpacked/server/node_modules` and `app.asar.unpacked/node_modules`.
+- 790MB asar bloat → 67MB by excluding `client/node_modules` (Vite already inlined the renderer), `.git/`, and `.agents/` via `packagerConfig.ignore` predicate.
+- Renderer 404 in packaged build: `client/vite.config.ts` has `root: client/` so Forge's Vite plugin writes to `client/.vite/renderer/main_window/`, not the project-root `.vite/renderer/`. Fixed `win.loadFile()` path in `electron/main.ts`.
+- `autoUpdater` emitted unhandled `ENOENT: app-update.yml` on every launch. Added `.on('error')` + `.catch()` around `checkForUpdatesAndNotify()` — no publish target yet, error swallowed cleanly.
+
+**Renderer/backend connectivity fix (renderer lost the backend after any key save):**
+- Root cause: `preload.ts` snapshots `serverPort` **once** via `ipcRenderer.sendSync('get-server-port')` at page load and never re-fetches. `restartServer()` was calling `getFreePort()` on every restart, so the renderer's API base URL silently pointed at a dead port after any key save/delete.
+- Fix: pick the port **once** at first startup (`if (!serverPort) serverPort = await getFreePort()`) and reuse across restarts. Also `await` the old child's `exit` event before spawning the new one — a bare `setTimeout` wasn't long enough on Windows and the new server raced the old socket into EADDRINUSE. TIME_WAIT does not apply to listening sockets, so rebinding on the same port is safe.
+
+**Mock verdict consistency (`server/src/adapters/jev.ts`):**
+- Prior mock winner was hardcoded and could contradict displayed scores (e.g., "ChatGPT wins" while Claude had the highest displayed Overall). Refactored `mockResponse()` to derive the winner from the same `mockScoreFor(${p}_overall)` scores that populate the scorecard; confidence proportional to the margin between top and second place (clamped 0.35–0.95). Verdict can no longer contradict the visible scorecard.
+
+**BYO Jev/TypeSafe credential path:**
+- Added `typesafe` as a fourth provider in Settings — key encrypted via `safeStorage`, injected into server env as `TYPESAFE_API_KEY`.
+- `validateApiKey('typesafe', key)` in `electron/main.ts` probes `https://api.typesafe.ai/v1/systemone` with a trivial noul question (~cent-fraction cost) to catch bad keys before save.
+- UI: distinct "Referee (optional)" section under the three debaters in `ProviderSetup.tsx`. Absence badge on scorecard now reads "demo mode — add a Jev key in Settings for real scoring" instead of the meaningless-to-users "TYPESAFE_API_KEY not set".
+- Continue button gate on first-run setup requires only a debater — Jev is optional.
+
+**Task Adherence hard-gate DQ:**
+- Prior behavior: Task Adherence displayed as "Fail" but had zero effect on the weighted `overall` score. Real Jev run produced Claude with TA=Fail and Overall=8.8, contradicting the gate's stated purpose.
+- Fix: `disqualified = relevance.noul >= 0.5` computed per provider per round; shipped in the round payload. If disqualified, the round scorecard's Overall cell shows a red "DQ" (tooltip explains scope) instead of the weighted number. Individual dim scores kept visible for diagnosis. Whole-debate Judge winner is intentionally **not** mechanically gated — Jev's holistic `/final` call can weigh recovery.
+- Verified semantics against real Jev API before shipping: off-topic probe returned `noul: 0.99`, on-topic probe returned `noul: 0.02`. Direction of comparison confirmed correct.
+
+**Distribution status at end of session:**
+- Packaged Windows build (`out/llm-roundtable-win32-x64/`) validated end-to-end: opening round, Fight, Seek Consensus, Judge, DQ gate, Jev BYO all working.
+- Squirrel installer (`out/make/squirrel.windows/x64/llm-roundtable-1.0.0 Setup.exe`) produced but not yet published as a GitHub Release.
+- Not yet done: clean-machine install test (blocks any further feature work), GitHub Release publish, Loom demo, README.
+- Explicitly deferred: code signing (unsigned + SmartScreen click-through documented), auto-update publish target, custom landing page, model dropdowns, further polish.
