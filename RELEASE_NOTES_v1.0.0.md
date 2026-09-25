@@ -13,7 +13,7 @@ First public build. A desktop app that runs a three-way debate between ChatGPT, 
 Open the app → **Settings**. You need at least one debater connected:
 
 - **ChatGPT** — sign in to your ChatGPT account (uses your existing Codex/ChatGPT session)
-- **Claude** — install Claude Code CLI and `claude login`, OR paste an Anthropic API key
+- **Claude** — install Claude Code and sign in with your Anthropic account from the CLI (`claude auth login` on current versions), OR paste an Anthropic API key
 - **Gemini** — paste a Google AI Studio key ([aistudio.google.com](https://aistudio.google.com))
 - **Jev** (optional referee) — paste a TypeSafe API key. Without one, Jev runs in demo mode with fixed scores.
 

@@ -17,7 +17,7 @@ The current build is Windows-only. Grab the installer from the latest [GitHub Re
 On first launch you'll see a Provider Setup screen. You need at least one of the three debater providers configured to start:
 
 - **ChatGPT** — sign in with your ChatGPT subscription via the bundled `codex login`. Works on Free and paid tiers.
-- **Claude** — install [Claude Code](https://docs.claude.com/en/docs/claude-code/quickstart) and `claude login` with your subscription (primary path), _or_ paste an Anthropic API key.
+- **Claude** — install [Claude Code](https://docs.claude.com/en/docs/claude-code/quickstart) and sign in with your Anthropic account from the CLI (`claude auth login` on current versions; the exact command may vary by version), _or_ paste an Anthropic API key.
 - **Gemini** — paste a key from [aistudio.google.com](https://aistudio.google.com).
 - **Jev (referee, optional)** — paste a key from typesafe.ai for real scoring. Without a key, Jev runs in demo mode with fixed illustrative scores.
 
