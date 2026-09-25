@@ -10,6 +10,7 @@ server/dist/
 # Electron / Forge build artifacts
 .vite/
 out/
+releases/
 electron/resources/*.js
 electron/resources/*.mjs
 

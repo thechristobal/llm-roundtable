@@ -41,6 +41,9 @@ const config: ForgeConfig = {
       // Local git history and Claude Code agent scratch space
       if (/^\/\.git($|\/)/.test(filePath)) return true
       if (/^\/\.agents($|\/)/.test(filePath)) return true
+      // Snapshots of prior build artifacts (RELEASES/.nupkg/Setup.exe) kept for
+      // uploading to older GitHub Releases as update baselines — must not ship.
+      if (/^\/releases($|\/)/.test(filePath)) return true
       return false
     },
   },

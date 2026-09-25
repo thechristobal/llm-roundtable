@@ -1,5 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import { app, autoUpdater, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import net from 'net'
 import path from 'path'
@@ -299,15 +298,23 @@ function createWindow() {
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
+function initAutoUpdater() {
+  if (!app.isPackaged || process.platform !== 'win32') return
+  const feedURL = `https://update.electronjs.org/thechristobal/llm-roundtable/win32-${process.arch}/${app.getVersion()}`
+  autoUpdater.setFeedURL({ url: feedURL })
+  autoUpdater.on('error', err => console.warn('[autoUpdater]', err.message))
+  autoUpdater.on('update-downloaded', () => {
+    // Squirrel silently applies the staged update on the next natural app quit.
+    // No dialog, no forced restart — user sees the new version on their next launch.
+    console.log('[autoUpdater] update staged; will apply on next quit')
+  })
+  autoUpdater.checkForUpdates()
+}
+
 app.whenReady().then(async () => {
   await startServer()
   createWindow()
-  if (app.isPackaged) {
-    // No publish target configured yet — swallow "app-update.yml missing"
-    // and any other update errors so the app doesn't emit unhandled rejections.
-    autoUpdater.on('error', err => console.warn('[autoUpdater]', err.message))
-    autoUpdater.checkForUpdatesAndNotify().catch(err => console.warn('[autoUpdater]', err.message))
-  }
+  initAutoUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
