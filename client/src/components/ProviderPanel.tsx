@@ -10,6 +10,16 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+// Models emit LaTeX with mixed delimiters. Normalize to what remark-math
+// expects ($...$ inline, $$...$$ display), and escape currency ranges like
+// "$100-$200" so they aren't misread as inline math.
+function normalizeMath(text: string): string {
+  return text
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `$$${m}$$`)
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => `$${m}$`)
+    .replace(/\$([\d.,\s-]+)\$/g, (_, m) => `\\$${m}\\$`)
+}
+
 function highlightFabrication(content: string, spans: string[]): string {
   if (!spans.length) return content
   let result = content
@@ -106,8 +116,8 @@ export default function ProviderPanel({ providerId, state, onReroll, suspectedFa
         )}
         {state.status === 'complete' && (
           <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[[remarkMath, { singleDollarTextMath: false }], remarkGfm]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
-              {highlightFabrication(state.content, suspectedFabrication)}
+            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+              {highlightFabrication(normalizeMath(state.content), suspectedFabrication)}
             </ReactMarkdown>
           </div>
         )}

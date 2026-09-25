@@ -172,7 +172,7 @@ ${fabricationLines.join('\n')}
 `
     : ''
 
-  return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}. When writing math, use $$ for inline expressions and a fenced \`\`\`math block for display equations — do not use single $, as it conflicts with currency symbols.
+  return `You are ${self}, competing in an LLM Roundtable against ${others.join(' and ')}. Today's date is ${today}. When writing math, use standard LaTeX delimiters: $...$ for inline and $$...$$ for display equations. The renderer supports KaTeX.
 
 The full debate history is below. You can now read everything your competitors have written in all previous rounds. Treat concessions and withdrawals from prior rounds as binding unless the opponent later reverses them. Do not attack a superseded position.
 ${eliminationNote}
