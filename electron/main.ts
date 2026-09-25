@@ -300,6 +300,9 @@ function createWindow() {
 
 function initAutoUpdater() {
   if (!app.isPackaged || process.platform !== 'win32') return
+  // Squirrel is still shuffling files during first-launch-after-install;
+  // hitting the updater in that window races file locks.
+  if (process.argv.includes('--squirrel-firstrun')) return
   const feedURL = `https://update.electronjs.org/thechristobal/llm-roundtable/win32-${process.arch}/${app.getVersion()}`
   autoUpdater.setFeedURL({ url: feedURL })
   autoUpdater.on('error', err => console.warn('[autoUpdater]', err.message))
