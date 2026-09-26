@@ -114,9 +114,16 @@ export default function ProviderSetup({ mode = 'setup', onComplete, onClose }: P
       <div className="flex-1 flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-2xl">
           <div className="mb-8">
-            <h1 className="text-2xl font-semibold text-[#e8e8f0]">
-              {mode === 'settings' ? 'Provider settings' : 'Connect your AI providers'}
-            </h1>
+            <div className="flex items-baseline justify-between gap-4">
+              <h1 className="text-2xl font-semibold text-[#e8e8f0]">
+                {mode === 'settings' ? 'Provider settings' : 'Connect your AI providers'}
+              </h1>
+              {mode === 'settings' && window.electronAPI?.appVersion && (
+                <span className="text-xs text-[#6b7280] font-mono">
+                  Roundtable v{window.electronAPI.appVersion}
+                </span>
+              )}
+            </div>
             <p className="mt-1 text-sm text-[#6b7280]">
               {mode === 'settings'
                 ? 'Manage your API keys. Keys are encrypted with your OS credentials.'

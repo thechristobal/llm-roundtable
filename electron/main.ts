@@ -200,6 +200,7 @@ async function restartServer() {
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
 ipcMain.on('get-server-port', event => { event.returnValue = serverPort })
+ipcMain.on('get-app-version', event => { event.returnValue = app.getVersion() })
 
 ipcMain.handle('get-provider-status', async () => {
   const keys = readKeys()

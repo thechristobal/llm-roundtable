@@ -15,9 +15,11 @@ type ProviderStatus = {
 
 // Fetched synchronously so React has the port before first render
 const serverPort: number = ipcRenderer.sendSync('get-server-port')
+const appVersion: string = ipcRenderer.sendSync('get-app-version')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   serverPort,
+  appVersion,
   getProviderStatus: () =>
     ipcRenderer.invoke('get-provider-status') as Promise<ProviderStatus>,
   setApiKey: (provider: string, key: string) =>

@@ -22,6 +22,7 @@ declare global {
   interface Window {
     electronAPI?: {
       serverPort: number
+      appVersion: string
       getProviderStatus: () => Promise<ProviderStatus>
       setApiKey: (provider: string, key: string) => Promise<void>
       deleteApiKey: (provider: string) => Promise<void>
