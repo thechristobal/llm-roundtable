@@ -1,3 +1,5 @@
+import type { AdapterErrorWire } from '../../../shared/adapter-errors'
+
 export type ProviderID = 'openai' | 'anthropic' | 'google'
 
 export type ProviderConfig = {
@@ -28,7 +30,7 @@ export type PanelState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'complete'; content: string; durationMs: number; model?: string }
-  | { status: 'error'; message: string }
+  | { status: 'error'; error: AdapterErrorWire }
 
 export type DebateAction = 'fight' | 'follow_up' | 'seek_consensus'
 

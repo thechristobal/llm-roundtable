@@ -3,6 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { ANTHROPIC_MODEL } from '../models.js'
+import { AdapterError, classifyAnthropicCliStatus } from './errors.js'
 
 // Composed safety flags approximating --restricted (not yet in installed CLI):
 //   - --tools ""              : no built-in tools (Bash, Edit, Read, etc.)
@@ -102,13 +103,22 @@ export async function askAnthropicViaCli(prompt: string, systemPrompt?: string):
     const timer = setTimeout(() => {
       child.kill('SIGKILL')
       promptFile?.cleanup()
-      reject(new Error(`Claude Code CLI timed out after ${TURN_TIMEOUT_MS / 1000}s`))
+      reject(new AdapterError({
+        category: 'timeout',
+        provider: 'anthropic',
+        message: `Claude Code CLI timed out after ${TURN_TIMEOUT_MS / 1000}s`,
+      }))
     }, TURN_TIMEOUT_MS)
 
     child.on('error', err => {
       clearTimeout(timer)
       promptFile?.cleanup()
-      reject(new Error(`Failed to spawn Claude Code CLI (${bin}): ${err.message}`))
+      reject(new AdapterError({
+        category: 'unknown',
+        provider: 'anthropic',
+        message: `Failed to spawn Claude Code CLI (${bin}): ${err.message}`,
+        cause: err,
+      }))
     })
 
     child.on('close', code => {
@@ -116,7 +126,11 @@ export async function askAnthropicViaCli(prompt: string, systemPrompt?: string):
       promptFile?.cleanup()
 
       if (code !== 0) {
-        reject(new Error(`Claude Code CLI exited ${code}: ${stderr.trim() || '(no stderr)'}`))
+        reject(new AdapterError({
+          category: 'unknown',
+          provider: 'anthropic',
+          message: `Claude Code CLI exited ${code}: ${stderr.trim() || '(no stderr)'}`,
+        }))
         return
       }
 
@@ -124,25 +138,27 @@ export async function askAnthropicViaCli(prompt: string, systemPrompt?: string):
       try {
         parsed = JSON.parse(stdout)
       } catch {
-        reject(new Error(`Claude Code CLI returned non-JSON output: ${stdout.slice(0, 500)}`))
+        reject(new AdapterError({
+          category: 'malformed',
+          provider: 'anthropic',
+          message: `Claude Code CLI returned non-JSON output: ${stdout.slice(0, 500)}`,
+        }))
         return
       }
 
       if (parsed.is_error) {
         const status = parsed.api_error_status
         const detail = parsed.result ?? `api_error_status=${status}`
-        if (status === 429) {
-          reject(new Error(`QUOTA_EXCEEDED: ${detail}`))
-        } else if (status === 529 || status === 503) {
-          reject(new Error(`CLAUDE_OVERLOADED: ${detail}`))
-        } else {
-          reject(new Error(`Claude Code CLI error: ${detail}`))
-        }
+        reject(classifyAnthropicCliStatus(status, detail))
         return
       }
 
       if (typeof parsed.result !== 'string') {
-        reject(new Error('Claude Code CLI returned no result field'))
+        reject(new AdapterError({
+          category: 'malformed',
+          provider: 'anthropic',
+          message: 'Claude Code CLI returned no result field',
+        }))
         return
       }
 

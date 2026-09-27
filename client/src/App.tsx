@@ -9,7 +9,9 @@ import ProviderSetup from './components/ProviderSetup'
 import { downloadDebate } from './export'
 import { importDebate } from './export/importDebate'
 import { apiBase } from './lib/api'
+import { ApiError, toWireError } from './lib/apiError'
 import { type DebateAction, type JevFinalResult, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
+import type { AdapterErrorWire } from '../../shared/adapter-errors'
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 
@@ -19,7 +21,7 @@ const LOADING_PANELS: Record<ProviderID, PanelState> = {
   google: { status: 'loading' },
 }
 
-async function fetchFromEndpoint(url: string, body: object): Promise<{ content: string; durationMs: number }> {
+async function fetchFromEndpoint(url: string, body: object): Promise<{ content: string; model?: string; durationMs: number }> {
   const start = Date.now()
   const res = await fetch(apiBase() + url, {
     method: 'POST',
@@ -27,8 +29,11 @@ async function fetchFromEndpoint(url: string, body: object): Promise<{ content: 
     body: JSON.stringify(body),
   })
   if (!res.ok) {
-    const errData = await res.json().catch(() => ({})) as { error?: string }
-    throw new Error(errData.error ?? `HTTP ${res.status}`)
+    const errData = await res.json().catch(() => ({})) as { error?: AdapterErrorWire }
+    if (errData.error && typeof errData.error === 'object' && 'category' in errData.error) {
+      throw new ApiError(errData.error)
+    }
+    throw new Error(`HTTP ${res.status}`)
   }
   const data = await res.json() as { content: string; model?: string }
   return { content: data.content, model: data.model, durationMs: Date.now() - start }
@@ -263,10 +268,10 @@ export default function App() {
           return next
         })
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Request failed'
+        const error = toWireError(err, id)
         setRounds(prev => {
           const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'error', message } } }
+          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'error', error } } }
           return next
         })
       }
@@ -292,10 +297,10 @@ export default function App() {
           return next
         })
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Request failed'
+        const error = toWireError(err, id)
         setRounds(prev => {
           const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'error', message } } }
+          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'error', error } } }
           return next
         })
       }
@@ -313,7 +318,7 @@ export default function App() {
     })
 
     try {
-      let result: { content: string; durationMs: number }
+      let result: { content: string; model?: string; durationMs: number }
 
       if (round.trigger === 'initial') {
         result = await fetchFromEndpoint('/api/ask', { provider: id, prompt: round.prompt! })
@@ -336,12 +341,12 @@ export default function App() {
         return next
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Request failed'
+      const error = toWireError(err, id)
       setRounds(prev => {
         const next = [...prev]
         next[roundIdx] = {
           ...next[roundIdx],
-          panels: { ...next[roundIdx].panels, [id]: { status: 'error', message } },
+          panels: { ...next[roundIdx].panels, [id]: { status: 'error', error } },
         }
         return next
       })

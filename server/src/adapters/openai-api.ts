@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { classifyOpenAIError } from './errors.js'
 
 let client: OpenAI | null = null
 function getClient() {
@@ -7,9 +8,13 @@ function getClient() {
 }
 
 export async function askOpenAI(prompt: string): Promise<string> {
-  const response = await getClient().chat.completions.create({
-    model: 'gpt-4o',
-    messages: [{ role: 'user', content: prompt }],
-  })
-  return response.choices[0].message.content ?? ''
+  try {
+    const response = await getClient().chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+    })
+    return response.choices[0].message.content ?? ''
+  } catch (err) {
+    throw classifyOpenAIError(err)
+  }
 }

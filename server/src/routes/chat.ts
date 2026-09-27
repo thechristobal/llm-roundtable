@@ -1,8 +1,8 @@
 import type { Request, Response, Router } from 'express'
 import express from 'express'
-import { askAnthropic } from '../adapters/anthropic'
-import { askGoogle } from '../adapters/google'
-import { askOpenAI } from '../adapters/openai'
+import { askAnthropic } from '../adapters/anthropic.js'
+import { askGoogle } from '../adapters/google.js'
+import { askOpenAI } from '../adapters/openai.js'
 
 const router: Router = express.Router()
 

@@ -4,8 +4,6 @@
 
 Roundtable takes one of your prompts, sends it to all three frontier models in parallel, lets them read each other's answers, and then runs a fight-and-consensus loop until you're ready for a verdict. An independent judge model (Jev, from TypeSafe) scores every round on reasoning, honesty, coherence, and precision — with a hard disqualification gate for any response that doesn't actually engage with the prompt.
 
-> _Screenshot / GIF placeholder — see the [Loom shot list](#demo-shot-list) below for what a 60–90s demo captures._
-
 ---
 
 ## Try it
@@ -21,7 +19,7 @@ On first launch you'll see a Provider Setup screen. You need at least one of the
 - **Gemini** — paste a key from [aistudio.google.com](https://aistudio.google.com).
 - **Jev (referee, optional)** — paste a key from typesafe.ai for real scoring. Without a key, Jev runs in demo mode with fixed illustrative scores.
 
-Keys are encrypted via your OS keychain (DPAPI on Windows, Keychain on macOS) through Electron's `safeStorage`. Roundtable never writes them to plaintext files.
+Keys are encrypted at rest by Windows DPAPI through Electron's `safeStorage`. Roundtable never writes them to plaintext files.
 
 ---
 
@@ -77,7 +75,7 @@ Every one of these was a real bug in a real packaged build:
 - Codex SDK's binary resolver couldn't find its own binary after asar unpack — extended `candidateNodeModulesRoots()` to walk `app.asar.unpacked/server/node_modules`.
 - 790MB asar bloat → 67MB by excluding `client/node_modules` (Vite already inlines the renderer) and `.git/`.
 - The Vite plugin writes the renderer bundle to `client/.vite/renderer/main_window/` because `client/vite.config.ts` has `root: client/` — not the project-root `.vite/renderer/`. `win.loadFile()` had to back out two levels and dive in.
-- `autoUpdater` emitted an unhandled `ENOENT: app-update.yml` rejection on every launch. Wrapped in `.on('error')` + `.catch()` — auto-update isn't wired to a publish target yet and this made the failure silent instead of fatal.
+- First-cut auto-updater used `electron-updater`, which expects NSIS + `latest.yml` — incompatible with a Squirrel installer. Rewrote against Electron's built-in `autoUpdater` pointed at `update.electronjs.org` (the free public feed backed by GitHub Releases), guarded by a `--squirrel-firstrun` check so the updater doesn't race Squirrel's own file lock during initial install.
 
 ---
 
@@ -94,26 +92,11 @@ forge.config.ts    Electron Forge config — asar unpack rules and ignore predic
 
 ## What this project is not
 
-- **Not AWS-hosted.** An early plan discussed a hosted web version on Lambda + DynamoDB — it was never built and is not part of the current architecture. Roundtable is a desktop app; users talk to providers directly from their machine.
 - **Not code-signed.** Documented above.
-- **Not auto-updating.** `electron-updater` is wired but has no publish target yet.
 - **Not multi-platform.** Windows Squirrel installer only. Mac build is scoped but not built.
-
----
-
-## Demo shot list
-
-For a 60–90s no-voiceover Loom that captures the value in the fewest possible seconds. Recording is a TODO; the shot list is:
-
-1. Cold-open on Provider Setup — three tiles connected + a Jev tile in the Referee section
-2. Type a spicy prompt ("Is Rust actually safer than Go, or is that oversold?")
-3. Three panels stream simultaneously, all with slightly different takes
-4. Click **Fight** — panels update with rebuttals
-5. Click **Seek Consensus** — panels converge or explicitly refuse to
-6. Click **Judge** — Jev scorecard appears with the DQ gate visible on any off-topic response, final verdict with confidence
 
 ---
 
 ## Contact
 
-Christobal — job-seeking full-stack engineer building portfolio work. If you're at Vynyl or reading this because someone linked you here, hit me at beeceepedia@gmail.com.
+Christobal — job-seeking full-stack engineer building portfolio work. If you're at Vynyl or reading this because someone linked you here, hit me at christobalserra@aol.com.

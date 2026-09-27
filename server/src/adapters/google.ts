@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { GOOGLE_MODEL } from '../models.js'
+import { classifyGoogleError } from './errors.js'
 
 let client: GoogleGenerativeAI | null = null
 function getClient() {
@@ -18,27 +19,24 @@ async function attempt(prompt: string, systemPrompt?: string): Promise<string> {
 
 export async function askGoogle(prompt: string, systemPrompt?: string): Promise<string> {
   const maxRetries = 6
-  let lastError: unknown
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await attempt(prompt, systemPrompt)
     } catch (err) {
-      lastError = err
-      const msg = err instanceof Error ? err.message : String(err)
-      const isQuota = /429|quota|RESOURCE_EXHAUSTED/i.test(msg)
-      const isOverloaded = /503|overloaded|high demand|service unavailable/i.test(msg)
-      const isPermanent = isQuota || (!isOverloaded && /4\d\d|invalid|not found|unauthorized|forbidden/i.test(msg))
-      if (isPermanent || i === maxRetries - 1) {
-        if (isQuota) throw new Error(`QUOTA_EXCEEDED: ${msg}`)
-        if (isOverloaded) throw new Error(`GEMINI_OVERLOADED: ${msg}`)
-        throw err
+      const classified = classifyGoogleError(err)
+      // Only 'overloaded' is transient enough to retry; every other category is
+      // permanent (quota, auth) or already terminal (unknown → fail fast).
+      const isTransient = classified.category === 'overloaded'
+      if (!isTransient || i === maxRetries - 1) {
+        throw classified
       }
-      const delay = isOverloaded ? 3000 * (i + 1) : 1500 * (i + 1)
-      console.warn(`Gemini error, retrying in ${delay}ms (attempt ${i + 1}/${maxRetries}): ${msg}`)
+      const delay = 3000 * (i + 1)
+      console.warn(`Gemini error, retrying in ${delay}ms (attempt ${i + 1}/${maxRetries}): ${classified.message}`)
       await new Promise(r => setTimeout(r, delay))
     }
   }
 
-  throw lastError
+  // Unreachable: loop either returns or throws.
+  throw new Error('askGoogle: unreachable')
 }

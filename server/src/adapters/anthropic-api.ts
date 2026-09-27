@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ANTHROPIC_MODEL } from '../models.js'
+import { classifyAnthropicError } from './errors.js'
 
 let client: Anthropic | null = null
 function getClient() {
@@ -21,10 +22,6 @@ export async function askAnthropicViaApi(prompt: string, systemPrompt?: string):
       .map(block => block.text)
       .join('')
   } catch (err) {
-    if (err instanceof Anthropic.APIError) {
-      if (err.status === 429) throw new Error(`QUOTA_EXCEEDED: ${err.message}`)
-      if (err.status === 529 || err.status === 503) throw new Error(`CLAUDE_OVERLOADED: ${err.message}`)
-    }
-    throw err
+    throw classifyAnthropicError(err)
   }
 }

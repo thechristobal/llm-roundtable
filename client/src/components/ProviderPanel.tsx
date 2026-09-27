@@ -123,24 +123,38 @@ export default function ProviderPanel({ providerId, state, onReroll, suspectedFa
         )}
         {state.status === 'error' && (
           <div className="flex flex-col gap-3">
-            {state.message.toLowerCase().includes('quota') ? (
+            {state.error.category === 'quota' ? (
               <div>
                 <p className="text-amber-400 font-medium">Quota exhausted — {provider.name} is out</p>
                 <p className="text-[#6b7280] text-xs mt-1">
                   Free tier limit reached. The other models will continue the debate without {provider.name}.
                 </p>
               </div>
-            ) : state.message.toLowerCase().includes('high demand') ? (
+            ) : state.error.category === 'overloaded' ? (
               <div>
                 <p className="text-yellow-400 font-medium">High demand</p>
                 <p className="text-[#6b7280] text-xs mt-1">
                   {provider.name} is overloaded. Retry or continue the debate without it.
                 </p>
               </div>
+            ) : state.error.category === 'auth' ? (
+              <div>
+                <p className="text-red-400 font-medium">Authentication failed</p>
+                <p className="text-[#6b7280] text-xs mt-1">
+                  {provider.name} rejected the credentials. Check the API key in Settings.
+                </p>
+              </div>
+            ) : state.error.category === 'timeout' ? (
+              <div>
+                <p className="text-yellow-400 font-medium">Timed out</p>
+                <p className="text-[#6b7280] text-xs mt-1">
+                  {provider.name} didn't respond in time. Retry may succeed.
+                </p>
+              </div>
             ) : (
-              <p className="text-red-400">{state.message}</p>
+              <p className="text-red-400">{state.error.message}</p>
             )}
-            {onReroll && (
+            {onReroll && state.error.retryable && (
               <button
                 onClick={onReroll}
                 className="self-start text-xs text-[#6b7280] hover:text-[#c9c9d8] border border-[#2a2a38] hover:border-[#3a3a50] rounded px-2 py-1 transition-colors"

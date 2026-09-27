@@ -44,6 +44,8 @@ const config: ForgeConfig = {
       // Snapshots of prior build artifacts (RELEASES/.nupkg/Setup.exe) kept for
       // uploading to older GitHub Releases as update baselines — must not ship.
       if (/^\/releases($|\/)/.test(filePath)) return true
+      // Test files never ship in the packaged app.
+      if (/\.test\.ts$/.test(filePath)) return true
       return false
     },
   },

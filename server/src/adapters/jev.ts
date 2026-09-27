@@ -1,3 +1,5 @@
+import { AdapterError, parseRetryAfter } from './errors.js'
+
 export const MODEL = 'jev-latest'
 
 export type JevQuestion =
@@ -97,7 +99,22 @@ export async function queryJev(request: JevRequest): Promise<JevResponse> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(`Jev API ${res.status}: ${text}`)
+    const message = `Jev API ${res.status}: ${text}`
+    const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'))
+    const status = res.status
+    if (status === 429) {
+      throw new AdapterError({ category: 'quota', provider: 'jev', message, retryAfterMs })
+    }
+    if (status === 401 || status === 403) {
+      throw new AdapterError({ category: 'auth', provider: 'jev', message })
+    }
+    if (status === 502 || status === 503 || status === 529) {
+      throw new AdapterError({ category: 'overloaded', provider: 'jev', message })
+    }
+    if (status === 504) {
+      throw new AdapterError({ category: 'timeout', provider: 'jev', message })
+    }
+    throw new AdapterError({ category: 'unknown', provider: 'jev', message })
   }
 
   return res.json() as Promise<JevResponse>

@@ -1,7 +1,13 @@
 import { Codex } from '@openai/codex-sdk'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import { OPENAI_MODEL } from '../models.js'
+import { classifyOpenAIError } from './errors.js'
+
+// esbuild's ESM output preserves import.meta.url, but tsx-run ESM has no
+// __dirname global. Derive it from import.meta.url in both cases.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // esbuild bundles @openai/codex-sdk into electron/resources/server.js. The
 // SDK's built-in resolver uses createRequire(import.meta.url), which after
@@ -75,8 +81,12 @@ function getClient() {
 }
 
 export async function askOpenAI(prompt: string, systemPrompt?: string): Promise<string> {
-  const thread = getClient().startThread({ model: OPENAI_MODEL, skipGitRepoCheck: true })
-  const fullPrompt = systemPrompt ? `[Context]\n${systemPrompt}\n\n[Question]\n${prompt}` : prompt
-  const turn = await thread.run(fullPrompt)
-  return turn.finalResponse ?? ''
+  try {
+    const thread = getClient().startThread({ model: OPENAI_MODEL, skipGitRepoCheck: true })
+    const fullPrompt = systemPrompt ? `[Context]\n${systemPrompt}\n\n[Question]\n${prompt}` : prompt
+    const turn = await thread.run(fullPrompt)
+    return turn.finalResponse ?? ''
+  } catch (err) {
+    throw classifyOpenAIError(err)
+  }
 }

@@ -1,5 +1,8 @@
 import dotenv from 'dotenv'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
+// package is ESM ("type":"module"), so __dirname isn't defined — derive it.
+const __dirname = dirname(fileURLToPath(import.meta.url))
 // Works from server/src/ (dev) and from electron/resources/ (bundled)
 dotenv.config({ path: resolve(__dirname, '../.env.local') })
 dotenv.config({ path: resolve(__dirname, '../../server/.env.local') })
@@ -18,6 +21,26 @@ import { buildDebateSystemPrompt, type DebateAction, type DebateRound, type JevF
 import { buildSystemPrompt } from './systemPrompt.js'
 import { queryJev, type JevQuestion } from './adapters/jev.js'
 import { buildRoundState, buildRoundQuestions, buildFinalState, buildFinalQuestions, type JudgeRound } from './judgePrompt.js'
+import { AdapterError, toHttpStatus, toWire } from './adapters/errors.js'
+import type { AdapterProvider, ApiErrorResponse } from '../../shared/adapter-errors.js'
+
+function sendAdapterError(res: express.Response, err: unknown, provider: AdapterProvider): void {
+  if (err instanceof AdapterError) {
+    const body: ApiErrorResponse = { error: toWire(err) }
+    res.status(toHttpStatus(err.category)).json(body)
+    return
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  const body: ApiErrorResponse = {
+    error: {
+      category: 'unknown',
+      provider,
+      message: message || 'Unknown error',
+      retryable: false,
+    },
+  }
+  res.status(500).json(body)
+}
 
 const ALL_PROVIDERS = ['openai', 'anthropic', 'google']
 
@@ -48,7 +71,7 @@ async function locateFabrication(responseText: string, providerName: string): Pr
   return sentences.filter((_, i) => (answers[`span_${i}`]?.noul ?? 0) >= 0.6)
 }
 
-const app = express()
+export const app = express()
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -86,16 +109,7 @@ app.post('/api/ask', async (req, res) => {
     res.json({ content, model: PROVIDER_MODELS[provider] })
   } catch (err) {
     console.error(`[${provider}] Error:`, err)
-    const message = err instanceof Error ? err.message : String(err)
-    if (message.startsWith('QUOTA_EXCEEDED:')) {
-      res.status(429).json({ error: 'Quota exhausted — free tier limit reached. Try again tomorrow or upgrade your API key.' })
-    } else if (message.startsWith('GEMINI_OVERLOADED:')) {
-      res.status(503).json({ error: 'Gemini is experiencing high demand. Try again in a moment.' })
-    } else if (message.startsWith('CLAUDE_OVERLOADED:')) {
-      res.status(503).json({ error: 'Claude is experiencing high demand. Try again in a moment.' })
-    } else {
-      res.status(500).json({ error: message || 'Unknown error' })
-    }
+    sendAdapterError(res, err, provider as AdapterProvider)
   }
 })
 
@@ -132,16 +146,7 @@ app.post('/api/debate/ask', async (req, res) => {
     res.json({ content, model: PROVIDER_MODELS[provider] })
   } catch (err) {
     console.error(`[debate/${provider}] Error:`, err)
-    const message = err instanceof Error ? err.message : String(err)
-    if (message.startsWith('QUOTA_EXCEEDED:')) {
-      res.status(429).json({ error: 'Quota exhausted — free tier limit reached. Try again tomorrow or upgrade your API key.' })
-    } else if (message.startsWith('GEMINI_OVERLOADED:')) {
-      res.status(503).json({ error: 'Gemini is experiencing high demand. Try again in a moment.' })
-    } else if (message.startsWith('CLAUDE_OVERLOADED:')) {
-      res.status(503).json({ error: 'Claude is experiencing high demand. Try again in a moment.' })
-    } else {
-      res.status(500).json({ error: message || 'Unknown error' })
-    }
+    sendAdapterError(res, err, provider as AdapterProvider)
   }
 })
 
@@ -227,7 +232,7 @@ app.post('/api/judge/round', async (req, res) => {
     res.json({ providers, mock: mock ?? false })
   } catch (err) {
     console.error('[judge/round] Error:', err)
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Evaluation failed' })
+    sendAdapterError(res, err, 'jev')
   }
 })
 
@@ -261,11 +266,13 @@ app.post('/api/judge/final', async (req, res) => {
     res.json({ scores, claimRisk, winner, winnerConfidence, mock: mock ?? false })
   } catch (err) {
     console.error('[judge/final] Error:', err)
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Judgment failed' })
+    sendAdapterError(res, err, 'jev')
   }
 })
 
-const port = process.env.PORT ?? 3001
-const host = process.env.HOST ?? '0.0.0.0'
-const httpServer = app.listen(Number(port), host, () => console.log(`Server running on ${host}:${port}`))
-httpServer.on('error', err => console.error('[server] listen error', err))
+if (process.env.NODE_ENV !== 'test') {
+  const port = process.env.PORT ?? 3001
+  const host = process.env.HOST ?? '0.0.0.0'
+  const httpServer = app.listen(Number(port), host, () => console.log(`Server running on ${host}:${port}`))
+  httpServer.on('error', err => console.error('[server] listen error', err))
+}

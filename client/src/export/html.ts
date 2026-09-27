@@ -29,16 +29,15 @@ function formatDuration(ms: number): string {
 }
 
 function panelErrorHtml(state: Extract<PanelState, { status: 'error' }>, name: string): string {
-  const msg = state.message.toLowerCase()
-  if (msg.includes('quota')) {
+  if (state.error.category === 'quota') {
     return `<p class="error-quota"><strong>Quota exhausted — ${name} is out</strong><br>
       <span class="error-sub">Free tier limit reached. The other models continued without ${name}.</span></p>`
   }
-  if (msg.includes('high demand')) {
+  if (state.error.category === 'overloaded') {
     return `<p class="error-overload"><strong>High demand</strong><br>
       <span class="error-sub">${name} was overloaded.</span></p>`
   }
-  return `<p class="error-generic">${state.message}</p>`
+  return `<p class="error-generic">${state.error.message}</p>`
 }
 
 async function renderPanel(id: ProviderID, state: PanelState): Promise<string> {
