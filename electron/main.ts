@@ -1,19 +1,38 @@
-import { app, autoUpdater, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
+import { app, autoUpdater, BrowserWindow, ipcMain, safeStorage, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import net from 'net'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import type {
+  AsyncArgs,
+  AsyncChannel,
+  AsyncResult,
+  ClaudeBackend,
+  ClaudeCliStatus,
+  SyncChannel,
+  SyncResult,
+} from '../shared/electron-ipc'
+
+// Typed wrappers around ipcMain so the handler signature has to match the
+// contract in shared/electron-ipc.ts. If a handler's args or return type drift
+// from the channel's declared shape, tsc fails here — no more hand-mirroring.
+function handleAsync<K extends AsyncChannel>(
+  channel: K,
+  handler: (event: IpcMainInvokeEvent, ...args: AsyncArgs<K>) => Promise<AsyncResult<K>>,
+): void {
+  ipcMain.handle(channel, handler as (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>)
+}
+
+function handleSync<K extends SyncChannel>(
+  channel: K,
+  handler: (event: IpcMainEvent) => SyncResult<K>,
+): void {
+  ipcMain.on(channel, event => { event.returnValue = handler(event) })
+}
 
 const CLAUDE_CLI_ENABLED = process.env.ROUNDTABLE_DISABLE_CLAUDE_CLI !== '1'
 const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude'
-
-type ClaudeCliStatus = {
-  present: boolean
-  loggedIn: boolean
-  authMethod?: string
-  subscriptionType?: string
-}
 
 let claudeCliCache: ClaudeCliStatus = { present: false, loggedIn: false }
 
@@ -50,7 +69,7 @@ function detectClaudeCli(): Promise<ClaudeCliStatus> {
 function selectAnthropicBackend(
   hasStoredKey: boolean,
   cli: ClaudeCliStatus,
-): 'cli' | 'api' | 'none' {
+): ClaudeBackend {
   if (hasStoredKey) return 'api'
   if (CLAUDE_CLI_ENABLED && cli.present && cli.loggedIn) return 'cli'
   return 'none'
@@ -199,10 +218,10 @@ async function restartServer() {
 
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
-ipcMain.on('get-server-port', event => { event.returnValue = serverPort })
-ipcMain.on('get-app-version', event => { event.returnValue = app.getVersion() })
+handleSync('get-server-port', () => serverPort)
+handleSync('get-app-version', () => app.getVersion())
 
-ipcMain.handle('get-provider-status', async () => {
+handleAsync('get-provider-status', async () => {
   const keys = readKeys()
   const codexPath = path.join(os.homedir(), '.codex', 'auth.json')
   let codexAuth = false
@@ -225,7 +244,7 @@ ipcMain.handle('get-provider-status', async () => {
   }
 })
 
-ipcMain.handle('refresh-claude-cli', async () => {
+handleAsync('refresh-claude-cli', async () => {
   claudeCliCache = await detectClaudeCli()
   const keys = readKeys()
   const newBackend = selectAnthropicBackend(!!keys.anthropic, claudeCliCache)
@@ -234,11 +253,11 @@ ipcMain.handle('refresh-claude-cli', async () => {
   return { claudeCli: claudeCliCache, backend: newBackend }
 })
 
-ipcMain.handle('open-claude-cli-install-instructions', async () => {
+handleAsync('open-claude-cli-install-instructions', async () => {
   await shell.openExternal('https://docs.claude.com/en/docs/claude-code/quickstart')
 })
 
-ipcMain.handle('set-api-key', async (_e, provider: string, key: string) => {
+handleAsync('set-api-key', async (_e, provider, key) => {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Encryption not available on this system')
   const result = await validateApiKey(provider, key)
   if (!result.ok) throw new Error(result.error ?? 'Key validation failed')
@@ -248,14 +267,14 @@ ipcMain.handle('set-api-key', async (_e, provider: string, key: string) => {
   await restartServer()
 })
 
-ipcMain.handle('delete-api-key', async (_e, provider: string) => {
+handleAsync('delete-api-key', async (_e, provider) => {
   const keys = readKeys()
   delete keys[provider]
   writeKeys(keys)
   await restartServer()
 })
 
-ipcMain.handle('check-codex-auth', async () => {
+handleAsync('check-codex-auth', async () => {
   const codexPath = path.join(os.homedir(), '.codex', 'auth.json')
   try {
     const auth = JSON.parse(fs.readFileSync(codexPath, 'utf-8'))
@@ -263,7 +282,7 @@ ipcMain.handle('check-codex-auth', async () => {
   } catch { return false }
 })
 
-ipcMain.handle('open-codex-login-instructions', async () => {
+handleAsync('open-codex-login-instructions', async () => {
   await shell.openExternal('https://chatgpt.com')
 })
 

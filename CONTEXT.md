@@ -335,3 +335,22 @@ Full run at packaged Windows build validation, followed by two product fixes and
 - Squirrel installer (`out/make/squirrel.windows/x64/llm-roundtable-1.0.0 Setup.exe`) produced but not yet published as a GitHub Release.
 - Not yet done: clean-machine install test (blocks any further feature work), GitHub Release publish, Loom demo, README.
 - Explicitly deferred: code signing (unsigned + SmartScreen click-through documented), auto-update publish target, custom landing page, model dropdowns, further polish.
+
+### 2026-09-27 — Architecture review candidates C3–C5
+
+Behavior-preserving refactors driven by the `/improve-codebase-architecture` HTML review. Each candidate: characterization tests first, then extraction, then verify, then commit.
+
+**C3 — HTTP boundary (`refactor(http): centralize HTTP boundary via typed Result<T, AdapterErrorWire>`):**
+- Server now emits one typed envelope on error (`shared/adapter-errors.ts`: category / provider / message / retryable / retryAfterMs). Handlers throw `AdapterError`; a single Express boundary maps to the envelope. No more stringly-typed `QUOTA_EXCEEDED:` / `GEMINI_OVERLOADED:` / `CLAUDE_OVERLOADED:` prefixes at that boundary.
+- Client `fetchFromEndpoint<T>` returns `Promise<Result<T, AdapterErrorWire>>`; every call site branches on `result.ok` instead of try/catch around fetches.
+
+**C4 — Debate-payload builders (`refactor(client): extract debate-payload builders into pure functions`):**
+- Extracted `toDebateRound` / `toDebateRounds` / `buildJevPayload` / `buildDebateAskPayload` into `client/src/lib/debatePayload.ts`. Fight, Seek Consensus, follow-up, and reroll now share one definition of clean history.
+- 30 characterization tests pin the exact wire shape for every call site, including the reroll boundary case (`rounds.slice(0, roundIdx)`) and the intentional null-preservation on `followUpPrompt`.
+- Preserved all asymmetries as-is per grilling: reroll continues to omit JEV context; new-round paths include it.
+
+**C5 — Electron IPC contract (`refactor(electron): typed IPC contract shared across main/preload/renderer`):**
+- Single source of truth in `shared/electron-ipc.ts`: `IpcAsyncContract` (7 channels) and `IpcSyncContract` (2 channels) with per-channel args/result. `ElectronAPI` (renderer-facing) is derived from the contract, not hand-written.
+- Typed wrappers: `handleAsync` / `handleSync` in `electron/main.ts` and `invokeAsync` / `sendSyncTyped` in `electron/preload.ts`. Drift between handler and invoker now fails tsc, not runtime.
+- `client/src/electron.d.ts` shrunk to a re-export shim so existing `import type { ClaudeCliStatus, ProviderStatus } from '../electron'` keeps working.
+- 23 type-level characterization tests (`shared/electron-ipc.test.ts`, `expectTypeOf`) pin the exact channel set and per-channel shape as of C5 — adding or omitting a channel now fails the suite.

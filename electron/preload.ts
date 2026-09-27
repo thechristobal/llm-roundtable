@@ -1,39 +1,41 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type {
+  AsyncArgs,
+  AsyncChannel,
+  AsyncResult,
+  ElectronAPI,
+  SyncChannel,
+  SyncResult,
+} from '../shared/electron-ipc'
 
-type ClaudeCliStatus = {
-  present: boolean
-  loggedIn: boolean
-  authMethod?: string
-  subscriptionType?: string
+// Typed wrappers around ipcRenderer. `invokeAsync` and `sendSyncTyped` take a
+// channel from the contract and give back the exact result type — no per-call
+// `as Promise<T>` casts, no drift from what main.ts registered.
+function invokeAsync<K extends AsyncChannel>(
+  channel: K,
+  ...args: AsyncArgs<K>
+): Promise<AsyncResult<K>> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<AsyncResult<K>>
 }
 
-type ProviderStatus = {
-  openai: boolean; anthropic: boolean; anthropicKey: boolean
-  gemini: boolean; typesafe: boolean; codexAuth: boolean
-  claudeCli: ClaudeCliStatus; cliEnabled: boolean
+function sendSyncTyped<K extends SyncChannel>(channel: K): SyncResult<K> {
+  return ipcRenderer.sendSync(channel) as SyncResult<K>
 }
 
 // Fetched synchronously so React has the port before first render
-const serverPort: number = ipcRenderer.sendSync('get-server-port')
-const appVersion: string = ipcRenderer.sendSync('get-app-version')
+const serverPort = sendSyncTyped('get-server-port')
+const appVersion = sendSyncTyped('get-app-version')
 
-contextBridge.exposeInMainWorld('electronAPI', {
+const api: ElectronAPI = {
   serverPort,
   appVersion,
-  getProviderStatus: () =>
-    ipcRenderer.invoke('get-provider-status') as Promise<ProviderStatus>,
-  setApiKey: (provider: string, key: string) =>
-    ipcRenderer.invoke('set-api-key', provider, key) as Promise<void>,
-  deleteApiKey: (provider: string) =>
-    ipcRenderer.invoke('delete-api-key', provider) as Promise<void>,
-  checkCodexAuth: () =>
-    ipcRenderer.invoke('check-codex-auth') as Promise<boolean>,
-  openCodexLoginInstructions: () =>
-    ipcRenderer.invoke('open-codex-login-instructions') as Promise<void>,
-  refreshClaudeCli: () =>
-    ipcRenderer.invoke('refresh-claude-cli') as Promise<{
-      claudeCli: ClaudeCliStatus; backend: 'cli' | 'api' | 'none'
-    }>,
-  openClaudeCliInstallInstructions: () =>
-    ipcRenderer.invoke('open-claude-cli-install-instructions') as Promise<void>,
-})
+  getProviderStatus: () => invokeAsync('get-provider-status'),
+  setApiKey: (provider, key) => invokeAsync('set-api-key', provider, key),
+  deleteApiKey: provider => invokeAsync('delete-api-key', provider),
+  checkCodexAuth: () => invokeAsync('check-codex-auth'),
+  openCodexLoginInstructions: () => invokeAsync('open-codex-login-instructions'),
+  refreshClaudeCli: () => invokeAsync('refresh-claude-cli'),
+  openClaudeCliInstallInstructions: () => invokeAsync('open-claude-cli-install-instructions'),
+}
+
+contextBridge.exposeInMainWorld('electronAPI', api)

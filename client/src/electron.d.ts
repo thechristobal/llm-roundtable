@@ -1,35 +1,12 @@
-export {}
-
-export type ClaudeCliStatus = {
-  present: boolean
-  loggedIn: boolean
-  authMethod?: string
-  subscriptionType?: string
-}
-
-export type ProviderStatus = {
-  openai: boolean
-  anthropic: boolean
-  anthropicKey: boolean
-  gemini: boolean
-  typesafe: boolean
-  codexAuth: boolean
-  claudeCli: ClaudeCliStatus
-  cliEnabled: boolean
-}
+// Renderer-side shim over the shared Electron IPC contract. The types live
+// in shared/electron-ipc.ts (single source of truth); this file just re-exports
+// them under the friendly names existing renderer code already imports from
+// '../electron', and augments the global Window with the electronAPI shape.
+export type { ClaudeCliStatus, ProviderStatus } from '../../shared/electron-ipc'
+import type { ElectronAPI } from '../../shared/electron-ipc'
 
 declare global {
   interface Window {
-    electronAPI?: {
-      serverPort: number
-      appVersion: string
-      getProviderStatus: () => Promise<ProviderStatus>
-      setApiKey: (provider: string, key: string) => Promise<void>
-      deleteApiKey: (provider: string) => Promise<void>
-      checkCodexAuth: () => Promise<boolean>
-      openCodexLoginInstructions: () => Promise<void>
-      refreshClaudeCli: () => Promise<{ claudeCli: ClaudeCliStatus; backend: 'cli' | 'api' | 'none' }>
-      openClaudeCliInstallInstructions: () => Promise<void>
-    }
+    electronAPI?: ElectronAPI
   }
 }
