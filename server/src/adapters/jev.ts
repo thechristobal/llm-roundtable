@@ -1,4 +1,10 @@
 import { AdapterError, parseRetryAfter } from './errors.js'
+import {
+  DIMENSIONS, FLAGS,
+  dimensionKey, flagKey, finalKey,
+  type DimensionKey, type FlagKey,
+} from '../../../shared/jev-rubric.js'
+import type { ProviderID } from '../../../shared/providers.js'
 
 export const MODEL = 'jev-latest'
 
@@ -29,34 +35,65 @@ export type JevResponse = {
   mock?: boolean
 }
 
-// Varied but stable mock scores on Jev's 0–9 scale (server adds 1 → displays as 1–10)
-const MOCK_SCORES: Record<string, Record<string, number>> = {
-  openai:    { reasoning: 4.8, coherence: 5.2, evidence: 4.6, honesty: 5.0, overall: 4.8 },
-  anthropic: { reasoning: 5.8, coherence: 6.1, evidence: 5.5, honesty: 6.2, overall: 5.8 },
-  google:    { reasoning: 4.2, coherence: 4.4, evidence: 4.0, honesty: 4.5, overall: 4.3 },
+// Varied but stable mock scores on Jev's 0–9 scale (server adds 1 → displays as 1–10).
+// Typed against the canonical DimensionKey union so a rubric change makes the
+// mock a compile error rather than a silent omission.
+const MOCK_DIM_SCORES: Record<ProviderID, Record<DimensionKey, number>> = {
+  openai:    { reasoning: 4.8, coherence: 5.2, evidence: 4.6, honesty: 5.0 },
+  anthropic: { reasoning: 5.8, coherence: 6.1, evidence: 5.5, honesty: 6.2 },
+  google:    { reasoning: 4.2, coherence: 4.4, evidence: 4.0, honesty: 4.5 },
 }
+// MOCK_OVERALL values equal each provider's reasoning score to preserve the
+// pre-refactor wire byte-for-byte. The old suffix-parse mock had a subtle
+// misordered-condition where `${p}_overall` fell through to the first dim
+// iteration (reasoning), so overall == reasoning on the wire. Preserved
+// verbatim; snapshots pin this. A future intentional change to mock overall
+// values must update goldens deliberately.
+const MOCK_OVERALL: Record<ProviderID, number> = {
+  openai: 4.8, anthropic: 5.8, google: 4.2,
+}
+// Mock noul defaults per flag. Values chosen so the pre-refactor snapshots
+// match verbatim: eqAnchor=0.7 (burden exists → NOT anchored per policy),
+// fabrication=0.1 (no fabrication), contradiction=0.1 (no contradiction).
+const MOCK_FLAG_NOUL: Record<FlagKey, number> = {
+  eqAnchor:      0.7,
+  fabrication:   0.1,
+  contradiction: 0.1,
+}
+// Fallback noul for any noul-type question NOT tied to a canonical FlagKey
+// (currently: relevance gate, claim_risk final key, and locateFabrication
+// span questions). Preserved from pre-refactor default of 0.2.
+const MOCK_NOUL_DEFAULT = 0.2
 
-function mockScoreFor(key: string): number {
-  for (const [provider, dims] of Object.entries(MOCK_SCORES)) {
-    for (const [dim, val] of Object.entries(dims)) {
-      if (key === `${provider}_${dim}` || key === `${provider}_overall`) return val
-    }
+const PROVIDERS: readonly ProviderID[] = ['openai', 'anthropic', 'google']
+
+// Precompute score/noul lookups from canonical schema iteration. Keys here
+// are the ONLY keys the mock recognizes for typed lookup; anything else
+// falls back to the neutral default (5.5 score / 0.2 noul).
+const MOCK_SCORE_LOOKUP: Record<string, number> = {}
+const MOCK_NOUL_LOOKUP: Record<string, number> = {}
+for (const p of PROVIDERS) {
+  for (const d of DIMENSIONS) {
+    MOCK_SCORE_LOOKUP[dimensionKey(p, d.key as DimensionKey)] = MOCK_DIM_SCORES[p][d.key as DimensionKey]
   }
-  return 5.5
+  MOCK_SCORE_LOOKUP[finalKey(p, 'overall')] = MOCK_OVERALL[p]
+  for (const f of FLAGS) {
+    MOCK_NOUL_LOOKUP[flagKey(p, f.key as FlagKey)] = MOCK_FLAG_NOUL[f.key as FlagKey]
+  }
 }
 
 function mockResponse(questions: Record<string, JevQuestion>): JevResponse {
   const answers: Record<string, JevAnswer> = {}
   for (const [key, q] of Object.entries(questions)) {
     if (q.type === 'score') {
-      answers[key] = { type: 'score', score: mockScoreFor(key), confidence: 0.70 }
+      answers[key] = { type: 'score', score: MOCK_SCORE_LOOKUP[key] ?? 5.5, confidence: 0.70 }
     } else if (q.type === 'choice') {
       const opts = Object.keys(q.criteria)
       // Derive the winner from the same mock overall scores that populate the
       // scorecard so Verdict can never contradict what the user sees. Falls
       // back to the first non-tie option only if there are no provider opts.
-      const providerOpts = opts.filter(o => o !== 'tie')
-      const scoreOf = (p: string) => mockScoreFor(`${p}_overall`)
+      const providerOpts = opts.filter(o => o !== 'tie') as ProviderID[]
+      const scoreOf = (p: ProviderID): number => MOCK_OVERALL[p] ?? 5.5
       const winner = providerOpts.length
         ? providerOpts.reduce((best, cur) => (scoreOf(cur) > scoreOf(best) ? cur : best))
         : opts[0]
@@ -67,10 +104,9 @@ function mockResponse(questions: Record<string, JevQuestion>): JevResponse {
       const probs = Object.fromEntries(opts.map(o => [o, o === winner ? confidence : even]))
       answers[key] = { type: 'choice', choice: winner, confidence, probabilities: probs }
     } else {
-      const noul = key.endsWith('_eq_burden') ? 0.7  // burden exists: EQ applies
-               : key.endsWith('_fabrication') ? 0.1  // no fabrication
-               : key.endsWith('_contradiction') ? 0.1  // no contradiction
-               : 0.2
+      // noul: canonical flags get their pinned mock value; everything else
+      // (relevance gate, claim_risk, locateFabrication spans) gets the default.
+      const noul = MOCK_NOUL_LOOKUP[key] ?? MOCK_NOUL_DEFAULT
       answers[key] = { type: 'noul', noul, confidence: 0.70 }
     }
   }

@@ -20,7 +20,15 @@ const PROVIDER_MODELS: Record<string, string> = {
 import { buildDebateSystemPrompt, type DebateAction, type DebateRound, type JevFinalContext, type JevRoundContext } from './debatePrompt.js'
 import { buildSystemPrompt } from './systemPrompt.js'
 import { queryJev, type JevQuestion } from './adapters/jev.js'
-import { buildRoundState, buildRoundQuestions, buildFinalState, buildFinalQuestions, type JudgeRound } from './judgePrompt.js'
+import {
+  buildRoundState, buildRoundQuestions,
+  buildFinalState, buildFinalQuestions,
+  MODEL_NAMES as JEV_MODEL_NAMES,
+  type JudgeRound,
+} from './jev-questions.js'
+import { computeProviderScorecard, type ProviderScorecard } from './jev-policy.js'
+import { finalKey } from '../../shared/jev-rubric.js'
+import type { ProviderID } from '../../shared/providers.js'
 import { AdapterError, toHttpStatus, toWire } from './adapters/errors.js'
 import type { AdapterProvider, ApiErrorResponse } from '../../shared/adapter-errors.js'
 
@@ -42,13 +50,7 @@ function sendAdapterError(res: express.Response, err: unknown, provider: Adapter
   res.status(500).json(body)
 }
 
-const ALL_PROVIDERS = ['openai', 'anthropic', 'google']
-
-const MODEL_NAMES: Record<string, string> = {
-  openai: 'ChatGPT',
-  anthropic: 'Claude',
-  google: 'Gemini',
-}
+const ALL_PROVIDERS: readonly ProviderID[] = ['openai', 'anthropic', 'google']
 
 function splitSentences(text: string): string[] {
   return text.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 25)
@@ -93,7 +95,7 @@ app.post('/api/ask', async (req, res) => {
 
   try {
     let content: string
-    const systemPrompt = buildSystemPrompt(provider, ALL_PROVIDERS)
+    const systemPrompt = buildSystemPrompt(provider, [...ALL_PROVIDERS])
 
     if (provider === 'openai') {
       content = await askOpenAI(prompt, systemPrompt)
@@ -129,7 +131,7 @@ app.post('/api/debate/ask', async (req, res) => {
   }
 
   try {
-    const systemPrompt = buildDebateSystemPrompt(provider, ALL_PROVIDERS, action, rounds, followUpPrompt, jevFinal, jevRounds)
+    const systemPrompt = buildDebateSystemPrompt(provider, [...ALL_PROVIDERS], action, rounds, followUpPrompt, jevFinal, jevRounds)
     let content: string
 
     if (provider === 'openai') {
@@ -150,16 +152,34 @@ app.post('/api/debate/ask', async (req, res) => {
   }
 })
 
-// Converts Jev's 0-9 weighted score to a 1-10 float with one decimal
-function jevScore(raw: number | undefined): number {
-  return Math.round(((raw ?? 0) + 1) * 10) / 10
+// Wire shim: canonical ProviderScorecard → the exact JSON shape the client
+// has always received. Snapshots in routes-goldens.test.ts.snap pin this.
+// suspectedFabrication is filled in AFTER by the route (async I/O concern
+// kept out of the pure policy layer).
+function scorecardToWireProvider(sc: ProviderScorecard) {
+  return {
+    reasoning: sc.dims.reasoning,
+    coherence: sc.dims.coherence,
+    evidence:  sc.dims.evidence,
+    honesty:   sc.dims.honesty,
+    relevance: { noul: sc.gates.relevance.noul, confidence: sc.gates.relevance.confidence },
+    overall:   sc.overall,
+    eqAnchored:            sc.flags.eqAnchor,
+    fabricationDetected:   sc.flags.fabrication,
+    contradictionDetected: sc.flags.contradiction,
+    // Task Adherence is a gate, not a weighted dimension: if the response
+    // failed to engage with the prompt, it's DQ'd for the round regardless
+    // of how well-argued the off-topic content was. Whole-debate winner
+    // ignores this — recovery across later rounds is Jev's call in /final.
+    disqualified: sc.gates.relevance.triggered,
+    suspectedFabrication: [] as string[],
+  }
 }
-
 
 app.post('/api/judge/round', async (req, res) => {
   const { round, allProviders, isInitial } = req.body as {
     round: JudgeRound
-    allProviders: string[]
+    allProviders: ProviderID[]
     isInitial: boolean
   }
 
@@ -174,58 +194,19 @@ app.post('/api/judge/round', async (req, res) => {
     const questions = buildRoundQuestions(activeProviders, isInitial)
     const { answers, mock } = await queryJev({ state, model: 'jev-latest', questions })
 
-    const dims = ['reasoning', 'coherence', 'evidence', 'honesty'] as const
-    const WEIGHTS = { reasoning: 0.40, honesty: 0.33, evidence: 0.05, coherence: 0.22 } as const
-    const providers: Record<string, unknown> = {}
-
+    const providers: Record<string, ReturnType<typeof scorecardToWireProvider>> = {}
     for (const p of activeProviders) {
-      const dimScores: Record<string, { score: number; confidence: number }> = Object.fromEntries(
-        dims.map(d => [d, {
-          score: jevScore(answers[`${p}_${d}`]?.score),
-          confidence: answers[`${p}_${d}`]?.confidence ?? 0,
-        }])
-      )
-
-      const eqAnchored = (answers[`${p}_eq_burden`]?.noul ?? 0) < 0.5
-      const contradictionDetected = (answers[`${p}_contradiction`]?.noul ?? 0) >= 0.5
-      const fabricationDetected = (answers[`${p}_fabrication`]?.noul ?? 0) >= 0.5
-
-      if (eqAnchored) dimScores.evidence = { ...dimScores.evidence, score: 5.0 }
-      if (contradictionDetected) {
-        dimScores.coherence = { ...dimScores.coherence, score: Math.min(dimScores.coherence.score, 1.0) }
-      }
-      if (fabricationDetected) {
-        dimScores.evidence = { ...dimScores.evidence, score: Math.min(dimScores.evidence.score, 1.0) }
-        dimScores.honesty = { ...dimScores.honesty, score: Math.min(dimScores.honesty.score, 3.0) }
-      }
-
-      const overall = Math.round(
-        (dimScores.reasoning.score * WEIGHTS.reasoning +
-         dimScores.honesty.score * WEIGHTS.honesty +
-         dimScores.evidence.score * WEIGHTS.evidence +
-         dimScores.coherence.score * WEIGHTS.coherence) * 10
-      ) / 10
-
-      const relevance = {
-        noul: answers[`${p}_relevance`]?.noul ?? 0,
-        confidence: answers[`${p}_relevance`]?.confidence ?? 0,
-      }
-      // Task Adherence is a gate, not a weighted dimension: if the response
-      // failed to engage with the prompt, it's DQ'd for the round regardless
-      // of how well-argued the off-topic content was. Whole-debate winner
-      // ignores this — recovery across later rounds is Jev's call in /final.
-      const disqualified = relevance.noul >= 0.5
-      providers[p] = { ...dimScores, relevance, overall, eqAnchored, fabricationDetected, contradictionDetected, disqualified, suspectedFabrication: [] as string[] }
+      providers[p] = scorecardToWireProvider(computeProviderScorecard(answers, p))
     }
 
     // Localize fabrication spans for flagged providers (non-blocking)
     await Promise.all(
       activeProviders
-        .filter(p => (providers[p] as { fabricationDetected: boolean }).fabricationDetected)
+        .filter(p => providers[p].fabricationDetected)
         .map(async p => {
           const responseText = round.responses[p] ?? ''
-          const spans = await locateFabrication(responseText, MODEL_NAMES[p] ?? p).catch(() => [])
-          ;(providers[p] as { suspectedFabrication: string[] }).suspectedFabrication = spans
+          const spans = await locateFabrication(responseText, JEV_MODEL_NAMES[p] ?? p).catch(() => [])
+          providers[p].suspectedFabrication = spans
         })
     )
 
@@ -236,8 +217,14 @@ app.post('/api/judge/round', async (req, res) => {
   }
 })
 
+// Converts Jev's 0-9 weighted score to a 1-10 float with one decimal.
+// Behavior-identical to the transform inside jev-policy.ts's resolveDimScores.
+function jevScore(raw: number | undefined): number {
+  return Math.round(((raw ?? 0) + 1) * 10) / 10
+}
+
 app.post('/api/judge/final', async (req, res) => {
-  const { rounds, allProviders } = req.body as { rounds: JudgeRound[]; allProviders: string[] }
+  const { rounds, allProviders } = req.body as { rounds: JudgeRound[]; allProviders: ProviderID[] }
 
   if (!rounds?.length || !allProviders?.length) {
     res.status(400).json({ error: 'rounds and allProviders are required' })
@@ -255,8 +242,8 @@ app.post('/api/judge/final', async (req, res) => {
     const scores: Record<string, number> = {}
     const claimRisk: Record<string, number> = {}
     for (const p of activeProviders) {
-      scores[p] = jevScore(answers[`${p}_overall`]?.score)
-      claimRisk[p] = answers[`${p}_claim_risk`]?.noul ?? 0
+      scores[p] = jevScore(answers[finalKey(p, 'overall')]?.score)
+      claimRisk[p] = answers[finalKey(p, 'claim_risk')]?.noul ?? 0
     }
 
     const winnerAnswer = answers.winner

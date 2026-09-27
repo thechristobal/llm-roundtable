@@ -1,6 +1,7 @@
 import type { AdapterErrorWire } from '../../../shared/adapter-errors'
 
-export type ProviderID = 'openai' | 'anthropic' | 'google'
+export type { ProviderID } from '../../../shared/providers'
+import type { ProviderID } from '../../../shared/providers'
 
 export type ProviderConfig = {
   id: ProviderID

@@ -1,0 +1,387 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`I1 golden — POST /api/judge/round wire shape > scenario A: all providers clean (no flags, no DQ) — pins base weighted-sum wire 1`] = `
+{
+  "mock": false,
+  "providers": {
+    "anthropic": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "google": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "openai": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+  },
+}
+`;
+
+exports[`I1 golden — POST /api/judge/round wire shape > scenario B: openai contradiction cap fires (no fabrication → no locateFabrication reentry) 1`] = `
+{
+  "mock": false,
+  "providers": {
+    "anthropic": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "google": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "openai": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 1,
+      },
+      "contradictionDetected": true,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 4.1,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+  },
+}
+`;
+
+exports[`I1 golden — POST /api/judge/round wire shape > scenario C: google disqualified via relevance gate (dim scores + overall untouched) 1`] = `
+{
+  "mock": false,
+  "providers": {
+    "anthropic": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "google": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": true,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0.8,
+      },
+      "suspectedFabrication": [],
+    },
+    "openai": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+  },
+}
+`;
+
+exports[`I1 golden — POST /api/judge/round wire shape > scenario D: openai eq-anchored (eq_burden.noul LOW → evidence boosted to 5.0) 1`] = `
+{
+  "mock": false,
+  "providers": {
+    "anthropic": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "google": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": false,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+    "openai": {
+      "coherence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "contradictionDetected": false,
+      "disqualified": false,
+      "eqAnchored": true,
+      "evidence": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "fabricationDetected": false,
+      "honesty": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "overall": 5,
+      "reasoning": {
+        "confidence": 0.7,
+        "score": 5,
+      },
+      "relevance": {
+        "confidence": 0.9,
+        "noul": 0,
+      },
+      "suspectedFabrication": [],
+    },
+  },
+}
+`;
+
+exports[`I2 golden — POST /api/judge/final wire shape > 3 providers active, anthropic winner 1`] = `
+{
+  "claimRisk": {
+    "anthropic": 0.3,
+    "google": 0.3,
+    "openai": 0.3,
+  },
+  "mock": false,
+  "scores": {
+    "anthropic": 6,
+    "google": 6,
+    "openai": 6,
+  },
+  "winner": "anthropic",
+  "winnerConfidence": 0.6,
+}
+`;
