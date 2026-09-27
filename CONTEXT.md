@@ -160,6 +160,7 @@ Jev (TypeSafe AI System One) is an independent judge that evaluates each debate 
 - **Export debate to file** — ✓ built (HTML with KaTeX)
 - **Import debate from file** — ✓ built
 - **Jev judge panel** — ✓ built (round scoring + final verdict + fabrication detection)
+- **Skill-specialized Claude subagents (Roundtable variant)** — a debate mode where every "provider" is the *same* underlying Claude model, but each panel is a Claude Code subagent running in isolation with a different skill or skill set loaded (candidates: diagnosing-bugs, TDD, code-review, security/threat-modeling, grilling). All panels receive the same prompt; the app captures correctness, reasoning trace, tool usage, wall time, and token cost per panel, then optionally passes the outputs to a blind Jev-style judge for ranking. **Goal:** isolate how much of the observed performance delta between agents comes from the harness + skill context rather than the base model, and explore skill-specialized multi-agent orchestration as a first-class Roundtable capability. **Open design questions:** subagent transport (Claude Agent SDK vs. shelling out to `claude` CLI per panel), how to prevent skill cross-contamination in a single Claude Code session, whether to reuse the existing Jev rubric or invent a task-specific one, how to normalize token/time costs when skills have wildly different tool budgets.
 
 ---
 
