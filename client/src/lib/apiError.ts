@@ -1,26 +1,18 @@
 import type { AdapterErrorCategory, AdapterErrorWire, AdapterProvider } from '../../../shared/adapter-errors'
 
-// Thrown by fetchFromEndpoint / any client fetch helper when the server
-// responds with an { error: AdapterErrorWire } envelope. Carries the wire
-// through so UI code can render off category/retryable without string sniffing.
-export class ApiError extends Error {
-  readonly wire: AdapterErrorWire
-  constructor(wire: AdapterErrorWire) {
-    super(wire.message)
-    this.name = 'ApiError'
-    this.wire = wire
-  }
-}
+// Result<T, E> — the single seam every client fetch returns through.
+// Callers destructure `.ok` and branch: no try/catch, no string sniffing,
+// no silent HTTP-status fallback that drops the server's error message.
+export type Result<T, E> = { ok: true; data: T } | { ok: false; error: E }
 
-// Best-effort recovery of a wire error from any thrown value. Used in catch
-// blocks so panel state always has a structured error, even when the throw
-// wasn't an ApiError (network failure, non-JSON body, etc.).
+// Coerce anything a fetch/network layer can throw (or an already-parsed
+// non-conforming JSON body) into a typed AdapterErrorWire so callers only
+// ever handle one error shape.
 export function toWireError(
   err: unknown,
   fallbackProvider: AdapterProvider,
   fallbackCategory: AdapterErrorCategory = 'unknown',
 ): AdapterErrorWire {
-  if (err instanceof ApiError) return err.wire
   const message = err instanceof Error ? err.message : String(err)
   return {
     category: fallbackCategory,

@@ -46,6 +46,7 @@ export function defaultRetryable(
       return true
     case 'auth':
     case 'malformed':
+    case 'invalid_request':
     case 'unknown':
       return false
   }
@@ -58,6 +59,7 @@ export function toHttpStatus(category: AdapterErrorCategory): number {
     case 'auth': return 401
     case 'timeout': return 504
     case 'malformed': return 502
+    case 'invalid_request': return 400
     case 'unknown': return 500
   }
 }

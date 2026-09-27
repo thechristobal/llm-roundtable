@@ -29,26 +29,8 @@ import {
 import { computeProviderScorecard, type ProviderScorecard } from './jev-policy.js'
 import { finalKey } from '../../shared/jev-rubric.js'
 import type { ProviderID } from '../../shared/providers.js'
-import { AdapterError, toHttpStatus, toWire } from './adapters/errors.js'
-import type { AdapterProvider, ApiErrorResponse } from '../../shared/adapter-errors.js'
-
-function sendAdapterError(res: express.Response, err: unknown, provider: AdapterProvider): void {
-  if (err instanceof AdapterError) {
-    const body: ApiErrorResponse = { error: toWire(err) }
-    res.status(toHttpStatus(err.category)).json(body)
-    return
-  }
-  const message = err instanceof Error ? err.message : String(err)
-  const body: ApiErrorResponse = {
-    error: {
-      category: 'unknown',
-      provider,
-      message: message || 'Unknown error',
-      retryable: false,
-    },
-  }
-  res.status(500).json(body)
-}
+import type { AdapterProvider } from '../../shared/adapter-errors.js'
+import { sendAdapterError, sendError, sendSuccess } from './http.js'
 
 const ALL_PROVIDERS: readonly ProviderID[] = ['openai', 'anthropic', 'google']
 
@@ -89,7 +71,7 @@ app.post('/api/ask', async (req, res) => {
   const { provider, prompt } = req.body as { provider: string; prompt: string }
 
   if (!provider || !prompt) {
-    res.status(400).json({ error: 'provider and prompt are required' })
+    sendError(res, { category: 'invalid_request', provider: 'server', message: 'provider and prompt are required' })
     return
   }
 
@@ -104,11 +86,11 @@ app.post('/api/ask', async (req, res) => {
     } else if (provider === 'google') {
       content = await askGoogle(prompt, systemPrompt)
     } else {
-      res.status(400).json({ error: `Unknown provider: ${provider}` })
+      sendError(res, { category: 'invalid_request', provider: 'server', message: `Unknown provider: ${provider}` })
       return
     }
 
-    res.json({ content, model: PROVIDER_MODELS[provider] })
+    sendSuccess(res, { content, model: PROVIDER_MODELS[provider] })
   } catch (err) {
     console.error(`[${provider}] Error:`, err)
     sendAdapterError(res, err, provider as AdapterProvider)
@@ -126,7 +108,7 @@ app.post('/api/debate/ask', async (req, res) => {
   }
 
   if (!provider || !action || !rounds?.length) {
-    res.status(400).json({ error: 'provider, action, and rounds are required' })
+    sendError(res, { category: 'invalid_request', provider: 'server', message: 'provider, action, and rounds are required' })
     return
   }
 
@@ -141,11 +123,11 @@ app.post('/api/debate/ask', async (req, res) => {
     } else if (provider === 'google') {
       content = await askGoogle('Continue the debate.', systemPrompt)
     } else {
-      res.status(400).json({ error: `Unknown provider: ${provider}` })
+      sendError(res, { category: 'invalid_request', provider: 'server', message: `Unknown provider: ${provider}` })
       return
     }
 
-    res.json({ content, model: PROVIDER_MODELS[provider] })
+    sendSuccess(res, { content, model: PROVIDER_MODELS[provider] })
   } catch (err) {
     console.error(`[debate/${provider}] Error:`, err)
     sendAdapterError(res, err, provider as AdapterProvider)
@@ -184,7 +166,7 @@ app.post('/api/judge/round', async (req, res) => {
   }
 
   if (!round || !allProviders?.length) {
-    res.status(400).json({ error: 'round and allProviders are required' })
+    sendError(res, { category: 'invalid_request', provider: 'server', message: 'round and allProviders are required' })
     return
   }
 
@@ -210,7 +192,7 @@ app.post('/api/judge/round', async (req, res) => {
         })
     )
 
-    res.json({ providers, mock: mock ?? false })
+    sendSuccess(res, { providers, mock: mock ?? false })
   } catch (err) {
     console.error('[judge/round] Error:', err)
     sendAdapterError(res, err, 'jev')
@@ -227,7 +209,7 @@ app.post('/api/judge/final', async (req, res) => {
   const { rounds, allProviders } = req.body as { rounds: JudgeRound[]; allProviders: ProviderID[] }
 
   if (!rounds?.length || !allProviders?.length) {
-    res.status(400).json({ error: 'rounds and allProviders are required' })
+    sendError(res, { category: 'invalid_request', provider: 'server', message: 'rounds and allProviders are required' })
     return
   }
 
@@ -250,7 +232,7 @@ app.post('/api/judge/final', async (req, res) => {
     const winner = winnerAnswer?.choice ?? 'tie'
     const winnerConfidence = winnerAnswer?.confidence ?? 0
 
-    res.json({ scores, claimRisk, winner, winnerConfidence, mock: mock ?? false })
+    sendSuccess(res, { scores, claimRisk, winner, winnerConfidence, mock: mock ?? false })
   } catch (err) {
     console.error('[judge/final] Error:', err)
     sendAdapterError(res, err, 'jev')

@@ -1,0 +1,119 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`C3 golden — adapter error wire shapes > POST /api/ask when adapter throws AdapterError(overloaded) → 503 + typed wire > body 1`] = `
+{
+  "error": {
+    "category": "overloaded",
+    "message": "try later",
+    "provider": "openai",
+    "retryable": true,
+  },
+}
+`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/ask when adapter throws AdapterError(overloaded) → 503 + typed wire > status 1`] = `503`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/ask when adapter throws AdapterError(quota) → 429 + typed wire > body 1`] = `
+{
+  "error": {
+    "category": "quota",
+    "message": "rate limited",
+    "provider": "openai",
+    "retryAfterMs": 1500,
+    "retryable": true,
+  },
+}
+`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/ask when adapter throws AdapterError(quota) → 429 + typed wire > status 1`] = `429`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/ask when adapter throws plain Error → 500 + unknown-category wire > body 1`] = `
+{
+  "error": {
+    "category": "unknown",
+    "message": "boom",
+    "provider": "openai",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/ask when adapter throws plain Error → 500 + unknown-category wire > status 1`] = `500`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/judge/round when queryJev throws AdapterError(auth) → 401 + typed wire (jev provider) > body 1`] = `
+{
+  "error": {
+    "category": "auth",
+    "message": "bad key",
+    "provider": "jev",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — adapter error wire shapes > POST /api/judge/round when queryJev throws AdapterError(auth) → 401 + typed wire (jev provider) > status 1`] = `401`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/ask with missing prompt → 400 > body 1`] = `
+{
+  "error": {
+    "category": "invalid_request",
+    "message": "provider and prompt are required",
+    "provider": "server",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/ask with missing prompt → 400 > status 1`] = `400`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/ask with unknown provider → 400 > body 1`] = `
+{
+  "error": {
+    "category": "invalid_request",
+    "message": "Unknown provider: grok",
+    "provider": "server",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/ask with unknown provider → 400 > status 1`] = `400`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/debate/ask with missing rounds → 400 > body 1`] = `
+{
+  "error": {
+    "category": "invalid_request",
+    "message": "provider, action, and rounds are required",
+    "provider": "server",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/debate/ask with missing rounds → 400 > status 1`] = `400`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/judge/final with missing rounds → 400 > body 1`] = `
+{
+  "error": {
+    "category": "invalid_request",
+    "message": "rounds and allProviders are required",
+    "provider": "server",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/judge/final with missing rounds → 400 > status 1`] = `400`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/judge/round with missing round → 400 > body 1`] = `
+{
+  "error": {
+    "category": "invalid_request",
+    "message": "round and allProviders are required",
+    "provider": "server",
+    "retryable": false,
+  },
+}
+`;
+
+exports[`C3 golden — validation error wire shapes > POST /api/judge/round with missing round → 400 > status 1`] = `400`;

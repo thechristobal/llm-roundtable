@@ -4,9 +4,12 @@ export type AdapterErrorCategory =
   | 'auth'
   | 'timeout'
   | 'malformed'
+  | 'invalid_request'
   | 'unknown'
 
-export type AdapterProvider = 'openai' | 'anthropic' | 'google' | 'jev'
+// 'server' covers errors that originated in the API layer itself
+// (validation, unknown route params) rather than an upstream provider.
+export type AdapterProvider = 'openai' | 'anthropic' | 'google' | 'jev' | 'server'
 
 export interface AdapterErrorWire {
   category: AdapterErrorCategory

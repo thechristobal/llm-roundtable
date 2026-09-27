@@ -9,9 +9,9 @@ import ProviderSetup from './components/ProviderSetup'
 import { downloadDebate } from './export'
 import { importDebate } from './export/importDebate'
 import { apiBase } from './lib/api'
-import { ApiError, toWireError } from './lib/apiError'
-import { type DebateAction, type JevFinalResult, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
-import type { AdapterErrorWire } from '../../shared/adapter-errors'
+import { toWireError, type Result } from './lib/apiError'
+import { type DebateAction, type JevFinalResult, type JevProviderRound, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
+import type { AdapterErrorWire, AdapterProvider } from '../../shared/adapter-errors'
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 
@@ -21,22 +21,32 @@ const LOADING_PANELS: Record<ProviderID, PanelState> = {
   google: { status: 'loading' },
 }
 
-async function fetchFromEndpoint(url: string, body: object): Promise<{ content: string; model?: string; durationMs: number }> {
-  const start = Date.now()
-  const res = await fetch(apiBase() + url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({})) as { error?: AdapterErrorWire }
-    if (errData.error && typeof errData.error === 'object' && 'category' in errData.error) {
-      throw new ApiError(errData.error)
+// Single client-side seam for every server fetch. Returns Result<T, AdapterErrorWire>
+// so callers branch on .ok instead of try/catch, and the typed error survives all
+// the way to the UI (category, retryable, retryAfterMs) without string sniffing.
+async function fetchFromEndpoint<T>(
+  url: string,
+  body: object,
+  fallbackProvider: AdapterProvider,
+): Promise<Result<T, AdapterErrorWire>> {
+  try {
+    const res = await fetch(apiBase() + url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({})) as { error?: AdapterErrorWire }
+      if (errData.error && typeof errData.error === 'object' && 'category' in errData.error) {
+        return { ok: false, error: errData.error }
+      }
+      return { ok: false, error: toWireError(new Error(`HTTP ${res.status}`), fallbackProvider) }
     }
-    throw new Error(`HTTP ${res.status}`)
+    const data = await res.json() as T
+    return { ok: true, data }
+  } catch (err) {
+    return { ok: false, error: toWireError(err, fallbackProvider) }
   }
-  const data = await res.json() as { content: string; model?: string }
-  return { content: data.content, model: data.model, durationMs: Date.now() - start }
 }
 
 function toDebateRounds(rounds: Round[]) {
@@ -160,34 +170,25 @@ export default function App() {
       next[idx] = { status: 'loading' }
       return next
     })
-    try {
-      const roundData = {
-        trigger: round.trigger,
-        prompt: round.prompt,
-        responses: Object.fromEntries(
-          PROVIDER_ORDER.map(id => [id, round.panels[id].status === 'complete' ? (round.panels[id] as Extract<typeof round.panels[ProviderID], { status: 'complete' }>).content : null])
-        ),
-      }
-      const res = await fetch(apiBase() + '/api/judge/round', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ round: roundData, allProviders: PROVIDER_ORDER, isInitial: round.trigger === 'initial' }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setJevRounds(prev => {
-        const next = [...prev]
-        next[idx] = { status: 'complete', providers: data.providers, mock: data.mock ?? false }
-        return next
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Evaluation failed'
-      setJevRounds(prev => {
-        const next = [...prev]
-        next[idx] = { status: 'error', message }
-        return next
-      })
+    const roundData = {
+      trigger: round.trigger,
+      prompt: round.prompt,
+      responses: Object.fromEntries(
+        PROVIDER_ORDER.map(id => [id, round.panels[id].status === 'complete' ? (round.panels[id] as Extract<typeof round.panels[ProviderID], { status: 'complete' }>).content : null])
+      ),
     }
+    const result = await fetchFromEndpoint<{ providers: Partial<Record<ProviderID, JevProviderRound>>; mock?: boolean }>(
+      '/api/judge/round',
+      { round: roundData, allProviders: PROVIDER_ORDER, isInitial: round.trigger === 'initial' },
+      'jev',
+    )
+    setJevRounds(prev => {
+      const next = [...prev]
+      next[idx] = result.ok
+        ? { status: 'complete', providers: result.data.providers, mock: result.data.mock ?? false }
+        : { status: 'error', message: result.error.message || 'Evaluation failed' }
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -206,18 +207,16 @@ export default function App() {
 
   async function handleJudge() {
     setJevFinal({ status: 'loading' })
-    try {
-      const roundsData = toDebateRounds(rounds)
-      const res = await fetch(apiBase() + '/api/judge/final', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rounds: roundsData, allProviders: PROVIDER_ORDER }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as { scores: Record<string, number>; claimRisk: Record<string, number>; winner: string; winnerConfidence: number; mock: boolean }
-      setJevFinal({ status: 'complete', scores: data.scores, claimRisk: data.claimRisk, winner: data.winner, winnerConfidence: data.winnerConfidence, mock: data.mock })
-    } catch (err) {
-      setJevFinal({ status: 'error', message: err instanceof Error ? err.message : 'Judgment failed' })
+    const roundsData = toDebateRounds(rounds)
+    const result = await fetchFromEndpoint<{ scores: Partial<Record<ProviderID, number>>; claimRisk: Partial<Record<ProviderID, number>>; winner: string; winnerConfidence: number; mock: boolean }>(
+      '/api/judge/final',
+      { rounds: roundsData, allProviders: PROVIDER_ORDER },
+      'jev',
+    )
+    if (result.ok) {
+      setJevFinal({ status: 'complete', scores: result.data.scores, claimRisk: result.data.claimRisk, winner: result.data.winner, winnerConfidence: result.data.winnerConfidence, mock: result.data.mock })
+    } else {
+      setJevFinal({ status: 'error', message: result.error.message || 'Judgment failed' })
     }
   }
 
@@ -258,23 +257,23 @@ export default function App() {
     const debateRounds = isContinuation ? toDebateRounds(rounds) : null
 
     await Promise.all(PROVIDER_ORDER.map(async id => {
-      try {
-        const result = isContinuation
-          ? await fetchFromEndpoint('/api/debate/ask', { provider: id, action: 'follow_up', followUpPrompt: trimmed, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) })
-          : await fetchFromEndpoint('/api/ask', { provider: id, prompt: trimmed })
-        setRounds(prev => {
-          const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model } } }
-          return next
-        })
-      } catch (err) {
-        const error = toWireError(err, id)
-        setRounds(prev => {
-          const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'error', error } } }
-          return next
-        })
-      }
+      const start = Date.now()
+      const result = isContinuation
+        ? await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', { provider: id, action: 'follow_up', followUpPrompt: trimmed, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) }, id)
+        : await fetchFromEndpoint<{ content: string; model?: string }>('/api/ask', { provider: id, prompt: trimmed }, id)
+      setRounds(prev => {
+        const next = [...prev]
+        next[newRoundIdx] = {
+          ...next[newRoundIdx],
+          panels: {
+            ...next[newRoundIdx].panels,
+            [id]: result.ok
+              ? { status: 'complete', content: result.data.content, durationMs: Date.now() - start, model: result.data.model }
+              : { status: 'error', error: result.error },
+          },
+        }
+        return next
+      })
     }))
 
     setIsSubmitting(false)
@@ -289,21 +288,21 @@ export default function App() {
     const newRoundIdx = rounds.length
 
     await Promise.all(PROVIDER_ORDER.map(async id => {
-      try {
-        const result = await fetchFromEndpoint('/api/debate/ask', { provider: id, action, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) })
-        setRounds(prev => {
-          const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model } } }
-          return next
-        })
-      } catch (err) {
-        const error = toWireError(err, id)
-        setRounds(prev => {
-          const next = [...prev]
-          next[newRoundIdx] = { ...next[newRoundIdx], panels: { ...next[newRoundIdx].panels, [id]: { status: 'error', error } } }
-          return next
-        })
-      }
+      const start = Date.now()
+      const result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', { provider: id, action, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) }, id)
+      setRounds(prev => {
+        const next = [...prev]
+        next[newRoundIdx] = {
+          ...next[newRoundIdx],
+          panels: {
+            ...next[newRoundIdx].panels,
+            [id]: result.ok
+              ? { status: 'complete', content: result.data.content, durationMs: Date.now() - start, model: result.data.model }
+              : { status: 'error', error: result.error },
+          },
+        }
+        return next
+      })
     }))
   }
 
@@ -317,40 +316,31 @@ export default function App() {
       return next
     })
 
-    try {
-      let result: { content: string; model?: string; durationMs: number }
+    const start = Date.now()
+    let result: Result<{ content: string; model?: string }, AdapterErrorWire>
 
-      if (round.trigger === 'initial') {
-        result = await fetchFromEndpoint('/api/ask', { provider: id, prompt: round.prompt! })
-      } else {
-        const priorRounds = toDebateRounds(rounds.slice(0, roundIdx))
-        const body: Record<string, unknown> = { provider: id, action: round.trigger, rounds: priorRounds }
-        if (round.trigger === 'follow_up') body.followUpPrompt = round.prompt
-        result = await fetchFromEndpoint('/api/debate/ask', body)
-      }
-
-      setRounds(prev => {
-        const next = [...prev]
-        next[roundIdx] = {
-          ...next[roundIdx],
-          panels: {
-            ...next[roundIdx].panels,
-            [id]: { status: 'complete', content: result.content, durationMs: result.durationMs, model: result.model },
-          },
-        }
-        return next
-      })
-    } catch (err) {
-      const error = toWireError(err, id)
-      setRounds(prev => {
-        const next = [...prev]
-        next[roundIdx] = {
-          ...next[roundIdx],
-          panels: { ...next[roundIdx].panels, [id]: { status: 'error', error } },
-        }
-        return next
-      })
+    if (round.trigger === 'initial') {
+      result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/ask', { provider: id, prompt: round.prompt! }, id)
+    } else {
+      const priorRounds = toDebateRounds(rounds.slice(0, roundIdx))
+      const body: Record<string, unknown> = { provider: id, action: round.trigger, rounds: priorRounds }
+      if (round.trigger === 'follow_up') body.followUpPrompt = round.prompt
+      result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', body, id)
     }
+
+    setRounds(prev => {
+      const next = [...prev]
+      next[roundIdx] = {
+        ...next[roundIdx],
+        panels: {
+          ...next[roundIdx].panels,
+          [id]: result.ok
+            ? { status: 'complete', content: result.data.content, durationMs: Date.now() - start, model: result.data.model }
+            : { status: 'error', error: result.error },
+        },
+      }
+      return next
+    })
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
