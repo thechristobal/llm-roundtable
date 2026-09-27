@@ -10,6 +10,7 @@ import { downloadDebate } from './export'
 import { importDebate } from './export/importDebate'
 import { apiBase } from './lib/api'
 import { toWireError, type Result } from './lib/apiError'
+import { buildDebateAskPayload, toDebateRound, toDebateRounds } from './lib/debatePayload'
 import { type DebateAction, type JevFinalResult, type JevProviderRound, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
 import type { AdapterErrorWire, AdapterProvider } from '../../shared/adapter-errors'
 
@@ -46,31 +47,6 @@ async function fetchFromEndpoint<T>(
     return { ok: true, data }
   } catch (err) {
     return { ok: false, error: toWireError(err, fallbackProvider) }
-  }
-}
-
-function toDebateRounds(rounds: Round[]) {
-  return rounds.map(r => ({
-    trigger: r.trigger,
-    prompt: r.prompt,
-    responses: Object.fromEntries(
-      PROVIDER_ORDER.map(id => {
-        const panel = r.panels[id]
-        return [id, panel.status === 'complete' ? panel.content : null]
-      })
-    ),
-  }))
-}
-
-
-function buildJevPayload(jevFinal: JevFinalResult, jevRounds: JevRoundResult[]) {
-  if (jevFinal.status !== 'complete') return {}
-  return {
-    jevFinal: { scores: jevFinal.scores, claimRisk: jevFinal.claimRisk, winner: jevFinal.winner, winnerConfidence: jevFinal.winnerConfidence },
-    jevRounds: jevRounds.map(r => r.status === 'complete'
-      ? { providers: Object.fromEntries(Object.entries(r.providers).map(([k, v]) => [k, { overall: v!.overall, suspectedFabrication: v!.suspectedFabrication }])) }
-      : null
-    ),
   }
 }
 
@@ -170,16 +146,9 @@ export default function App() {
       next[idx] = { status: 'loading' }
       return next
     })
-    const roundData = {
-      trigger: round.trigger,
-      prompt: round.prompt,
-      responses: Object.fromEntries(
-        PROVIDER_ORDER.map(id => [id, round.panels[id].status === 'complete' ? (round.panels[id] as Extract<typeof round.panels[ProviderID], { status: 'complete' }>).content : null])
-      ),
-    }
     const result = await fetchFromEndpoint<{ providers: Partial<Record<ProviderID, JevProviderRound>>; mock?: boolean }>(
       '/api/judge/round',
-      { round: roundData, allProviders: PROVIDER_ORDER, isInitial: round.trigger === 'initial' },
+      { round: toDebateRound(round), allProviders: PROVIDER_ORDER, isInitial: round.trigger === 'initial' },
       'jev',
     )
     setJevRounds(prev => {
@@ -254,12 +223,16 @@ export default function App() {
     setRounds(prev => [...prev, newRound])
     const newRoundIdx = rounds.length
 
-    const debateRounds = isContinuation ? toDebateRounds(rounds) : null
-
     await Promise.all(PROVIDER_ORDER.map(async id => {
       const start = Date.now()
       const result = isContinuation
-        ? await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', { provider: id, action: 'follow_up', followUpPrompt: trimmed, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) }, id)
+        ? await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', buildDebateAskPayload({
+            provider: id,
+            action: 'follow_up',
+            rounds,
+            followUpPrompt: trimmed,
+            jev: { final: jevFinal, rounds: jevRounds },
+          }), id)
         : await fetchFromEndpoint<{ content: string; model?: string }>('/api/ask', { provider: id, prompt: trimmed }, id)
       setRounds(prev => {
         const next = [...prev]
@@ -282,14 +255,18 @@ export default function App() {
   async function handleDebateAction(action: DebateAction) {
     if (isLoading) return
 
-    const debateRounds = toDebateRounds(rounds)
     const newRound: Round = { trigger: action, prompt: null, panels: { ...LOADING_PANELS } }
     setRounds(prev => [...prev, newRound])
     const newRoundIdx = rounds.length
 
     await Promise.all(PROVIDER_ORDER.map(async id => {
       const start = Date.now()
-      const result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', { provider: id, action, rounds: debateRounds, ...buildJevPayload(jevFinal, jevRounds) }, id)
+      const result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', buildDebateAskPayload({
+        provider: id,
+        action,
+        rounds,
+        jev: { final: jevFinal, rounds: jevRounds },
+      }), id)
       setRounds(prev => {
         const next = [...prev]
         next[newRoundIdx] = {
@@ -322,10 +299,14 @@ export default function App() {
     if (round.trigger === 'initial') {
       result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/ask', { provider: id, prompt: round.prompt! }, id)
     } else {
-      const priorRounds = toDebateRounds(rounds.slice(0, roundIdx))
-      const body: Record<string, unknown> = { provider: id, action: round.trigger, rounds: priorRounds }
-      if (round.trigger === 'follow_up') body.followUpPrompt = round.prompt
-      result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', body, id)
+      // Reroll intentionally omits `jev` — models re-answer from the same
+      // debate state, not with fresh judgment context.
+      result = await fetchFromEndpoint<{ content: string; model?: string }>('/api/debate/ask', buildDebateAskPayload({
+        provider: id,
+        action: round.trigger,
+        rounds: rounds.slice(0, roundIdx),
+        ...(round.trigger === 'follow_up' ? { followUpPrompt: round.prompt } : {}),
+      }), id)
     }
 
     setRounds(prev => {
