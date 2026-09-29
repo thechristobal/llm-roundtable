@@ -55,6 +55,7 @@ export type IpcAsyncContract = {
 export type IpcSyncContract = {
   'get-server-port': number
   'get-app-version': string
+  'get-auth-token': string
 }
 
 export type AsyncChannel = keyof IpcAsyncContract
@@ -72,6 +73,7 @@ export type SyncResult<K extends SyncChannel> = IpcSyncContract[K]
 export type ElectronAPI = {
   serverPort: SyncResult<'get-server-port'>
   appVersion: SyncResult<'get-app-version'>
+  authToken: SyncResult<'get-auth-token'>
   getProviderStatus:                (...args: AsyncArgs<'get-provider-status'>) => Promise<AsyncResult<'get-provider-status'>>
   setApiKey:                        (...args: AsyncArgs<'set-api-key'>) => Promise<AsyncResult<'set-api-key'>>
   deleteApiKey:                     (...args: AsyncArgs<'delete-api-key'>) => Promise<AsyncResult<'delete-api-key'>>

@@ -25,10 +25,12 @@ function sendSyncTyped<K extends SyncChannel>(channel: K): SyncResult<K> {
 // Fetched synchronously so React has the port before first render
 const serverPort = sendSyncTyped('get-server-port')
 const appVersion = sendSyncTyped('get-app-version')
+const authToken = sendSyncTyped('get-auth-token')
 
 const api: ElectronAPI = {
   serverPort,
   appVersion,
+  authToken,
   getProviderStatus: () => invokeAsync('get-provider-status'),
   setApiKey: (provider, key) => invokeAsync('set-api-key', provider, key),
   deleteApiKey: provider => invokeAsync('delete-api-key', provider),

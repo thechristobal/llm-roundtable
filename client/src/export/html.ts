@@ -12,6 +12,14 @@ import type { Exporter } from './types'
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 
+// Every user- or model-supplied string interpolated into the export HTML flows
+// through here. Exports are meant to be shared, so treat everything except the
+// hardcoded template as attacker-controlled — an LLM prompted to emit
+// `</script><script>alert(1)</script>` should render as text, not code.
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
 async function md2html(content: string): Promise<string> {
   const result = await unified()
     .use(remarkParse)
@@ -37,7 +45,7 @@ function panelErrorHtml(state: Extract<PanelState, { status: 'error' }>, name: s
     return `<p class="error-overload"><strong>High demand</strong><br>
       <span class="error-sub">${name} was overloaded.</span></p>`
   }
-  return `<p class="error-generic">${state.error.message}</p>`
+  return `<p class="error-generic">${escapeHtml(state.error.message)}</p>`
 }
 
 async function renderPanel(id: ProviderID, state: PanelState): Promise<string> {
@@ -66,8 +74,8 @@ async function renderPanel(id: ProviderID, state: PanelState): Promise<string> {
 }
 
 function roundLabel(round: Round): { text: string; cls: string } | null {
-  if (round.trigger === 'initial' && round.prompt) return { text: `— ${round.prompt}`, cls: 'trigger-initial' }
-  if (round.trigger === 'follow_up' && round.prompt) return { text: `— Follow-up: ${round.prompt}`, cls: 'trigger-followup' }
+  if (round.trigger === 'initial' && round.prompt) return { text: `— ${escapeHtml(round.prompt)}`, cls: 'trigger-initial' }
+  if (round.trigger === 'follow_up' && round.prompt) return { text: `— Follow-up: ${escapeHtml(round.prompt)}`, cls: 'trigger-followup' }
   if (round.trigger === 'fight') return { text: '— Fight', cls: 'trigger-fight' }
   if (round.trigger === 'seek_consensus') return { text: '— Seek Consensus', cls: 'trigger-consensus' }
   return null
@@ -144,7 +152,13 @@ export const htmlExporter: Exporter = {
     const roundHtmls = await Promise.all(rounds.map((r, i) => renderRound(r, i)))
     const dateStr = exportedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     const timeStr = exportedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-    const dataJson = JSON.stringify(rounds)
+    // JSON.stringify does NOT escape the substring `</script>`. An LLM response
+    // containing that literal would close this <script> container and turn
+    // subsequent tokens into executable script when the recipient opens the
+    // exported file (no CSP on exports, file:// origin). Escaping every `<`
+    // inside the JSON string is invisible after JSON.parse but neutralizes
+    // any embedded tag.
+    const dataJson = JSON.stringify(rounds).replace(/</g, '\\u003c')
     return `<!DOCTYPE html>
 <html lang="en">
 <head>

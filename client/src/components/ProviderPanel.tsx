@@ -1,14 +1,11 @@
 import 'katex/dist/katex.min.css'
 import rehypeKatex from 'rehype-katex'
-import rehypeRaw from 'rehype-raw'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import type { Element, ElementContent, Parents, Root, Text } from 'hast'
+import type { Plugin } from 'unified'
 import { PROVIDERS, type PanelState, type ProviderID } from '../types'
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
 
 // Models emit LaTeX with mixed delimiters. Normalize to what remark-math
 // expects ($...$ inline, $$...$$ display), and escape currency ranges like
@@ -20,17 +17,70 @@ function normalizeMath(text: string): string {
     .replace(/\$([\d.,\s-]+)\$/g, (_, m) => `\\$${m}\\$`)
 }
 
-function highlightFabrication(content: string, spans: string[]): string {
-  if (!spans.length) return content
-  let result = content
+const FABRICATION_LABEL = ' [unverified claim — in testing]'
+const FABRICATION_TITLE = 'Fabrication detection is an experimental feature currently in testing. Jev flagged this span as a possible unverified or misrepresented claim.'
+
+// Wrap Jev-flagged spans in <mark> by walking the hast tree instead of
+// splicing HTML into the markdown source. Injecting HTML would require
+// rehype-raw, which re-runs the full HTML parser on model output — an XSS
+// sink whenever an LLM emits <script> or <img onerror>.
+function markFabricationSpans(text: string, spans: string[]): (Text | Element)[] {
+  const ranges: { start: number; end: number }[] = []
   for (const span of spans) {
-    const escaped = escapeRegex(span)
-    result = result.replace(
-      new RegExp(escaped, 'g'),
-      `<mark data-jev="fabrication">${span}<span class="jev-fabrication-label" title="Fabrication detection is an experimental feature currently in testing. Jev flagged this span as a possible unverified or misrepresented claim."> [unverified claim — in testing]</span></mark>`
-    )
+    if (!span) continue
+    let idx = 0
+    while ((idx = text.indexOf(span, idx)) !== -1) {
+      ranges.push({ start: idx, end: idx + span.length })
+      idx += span.length
+    }
   }
-  return result
+  if (!ranges.length) return [{ type: 'text', value: text }]
+  ranges.sort((a, b) => a.start - b.start)
+  const merged: { start: number; end: number }[] = []
+  for (const r of ranges) {
+    const last = merged[merged.length - 1]
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end)
+    else merged.push({ ...r })
+  }
+  const out: (Text | Element)[] = []
+  let cursor = 0
+  for (const { start, end } of merged) {
+    if (start > cursor) out.push({ type: 'text', value: text.slice(cursor, start) })
+    out.push({
+      type: 'element',
+      tagName: 'mark',
+      properties: { 'data-jev': 'fabrication' },
+      children: [
+        { type: 'text', value: text.slice(start, end) },
+        {
+          type: 'element',
+          tagName: 'span',
+          properties: { className: ['jev-fabrication-label'], title: FABRICATION_TITLE },
+          children: [{ type: 'text', value: FABRICATION_LABEL }],
+        },
+      ],
+    })
+    cursor = end
+  }
+  if (cursor < text.length) out.push({ type: 'text', value: text.slice(cursor) })
+  return out
+}
+
+const rehypeMarkFabrication: Plugin<[string[]], Root> = (spans) => (tree) => {
+  if (!spans?.length) return
+  const visit = (node: Parents): void => {
+    const next: ElementContent[] = []
+    for (const child of node.children) {
+      if (child.type === 'text') {
+        next.push(...markFabricationSpans(child.value, spans))
+      } else {
+        if ('children' in child) visit(child as Parents)
+        next.push(child as ElementContent)
+      }
+    }
+    node.children = next as typeof node.children
+  }
+  visit(tree)
 }
 
 function IconChatGPT({ color }: { color: string }) {
@@ -116,8 +166,8 @@ export default function ProviderPanel({ providerId, state, onReroll, suspectedFa
         )}
         {state.status === 'complete' && (
           <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
-              {highlightFabrication(normalizeMath(state.content), suspectedFabrication)}
+            <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex, [rehypeMarkFabrication, suspectedFabrication]]}>
+              {normalizeMath(state.content)}
             </ReactMarkdown>
           </div>
         )}

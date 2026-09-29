@@ -31,9 +31,12 @@ async function fetchFromEndpoint<T>(
   fallbackProvider: AdapterProvider,
 ): Promise<Result<T, AdapterErrorWire>> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const token = window.electronAPI?.authToken
+    if (token) headers.Authorization = `Bearer ${token}`
     const res = await fetch(apiBase() + url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     })
     if (!res.ok) {

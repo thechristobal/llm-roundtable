@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import dotenv from 'dotenv'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -56,16 +57,51 @@ async function locateFabrication(responseText: string, providerName: string): Pr
 }
 
 export const app = express()
+app.disable('x-powered-by')
 
+// Renderer runs from file:// (packaged) or http://localhost:<vite-port> (dev),
+// so requests either omit Origin entirely or carry a null/file: origin. Echo
+// only those; any other origin (e.g. a real webpage that guessed our loopback
+// port) gets no CORS grant. This is defense-in-depth alongside the bearer
+// check below — a no-cors POST would still be blocked at the auth layer.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const origin = req.headers.origin
+  const allowed = !origin || origin === 'null' || origin.startsWith('file://') || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+  if (allowed && origin) res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  if (req.method === 'OPTIONS') { res.sendStatus(200); return }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') { res.sendStatus(allowed ? 200 : 403); return }
   next()
 })
 
-app.use(express.json())
+// Bearer-token gate on /api/*. The token is generated per app launch in
+// electron/main.ts and injected via ROUNDTABLE_AUTH_TOKEN when spawning the
+// server; the renderer reads the same token synchronously from preload and
+// sends it as `Authorization: Bearer <token>`. Any request without the token
+// — including a webpage that guessed the loopback port — gets 401.
+//
+// When ROUNDTABLE_AUTH_TOKEN is unset (standalone dev runs of the server
+// without Electron), the gate is disabled so `npm run dev` in server/ still
+// works against a browser or curl. Packaged builds always set the token.
+const requiredAuthToken = process.env.ROUNDTABLE_AUTH_TOKEN
+if (requiredAuthToken) {
+  const expected = Buffer.from(`Bearer ${requiredAuthToken}`)
+  app.use('/api', (req, res, next) => {
+    const header = req.headers.authorization ?? ''
+    const provided = Buffer.from(header)
+    if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+      res.status(401).json({ error: { category: 'auth', provider: 'server', message: 'Unauthorized' } })
+      return
+    }
+    next()
+  })
+}
+
+// 5 MB — accumulated debate history (rounds × providers × markdown + JEV context)
+// blows past body-parser's 100 KB default around round 6–7. Safe on this server
+// because Electron main binds it to 127.0.0.1 only, no external exposure.
+app.use(express.json({ limit: '5mb' }))
 
 app.post('/api/ask', async (req, res) => {
   const { provider, prompt } = req.body as { provider: string; prompt: string }
@@ -241,7 +277,7 @@ app.post('/api/judge/final', async (req, res) => {
 
 if (process.env.NODE_ENV !== 'test') {
   const port = process.env.PORT ?? 3001
-  const host = process.env.HOST ?? '0.0.0.0'
+  const host = process.env.HOST ?? '127.0.0.1'
   const httpServer = app.listen(Number(port), host, () => console.log(`Server running on ${host}:${port}`))
   httpServer.on('error', err => console.error('[server] listen error', err))
 }

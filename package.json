@@ -25,7 +25,7 @@
     "@types/node": "^22.0.0",
     "@types/supertest": "^7.2.1",
     "concurrently": "^9.0.0",
-    "electron": "^33.3.1",
+    "electron": "^39.8.10",
     "esbuild": "^0.28.2",
     "jsdom": "^29.1.1",
     "supertest": "^7.3.0",

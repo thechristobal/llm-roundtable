@@ -1,5 +1,6 @@
-import { app, autoUpdater, BrowserWindow, ipcMain, safeStorage, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, safeStorage, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
+import crypto from 'crypto'
 import net from 'net'
 import path from 'path'
 import fs from 'fs'
@@ -139,6 +140,12 @@ async function validateApiKey(provider: string, key: string): Promise<{ ok: bool
 let serverPort = 0
 let serverProcess: ChildProcess | null = null
 
+// Shared secret between main (spawns server) and renderer (calls API). Any
+// non-renderer origin — a browser tab that guessed the port, another local
+// process — is missing this token and gets 401. Generated once per app launch,
+// never persisted to disk, never leaves loopback.
+const authToken = crypto.randomBytes(32).toString('hex')
+
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer()
@@ -172,8 +179,8 @@ async function startServer() {
   // from server/.env.local when running without stored credentials.
   // In packaged builds, start clean — only explicitly-stored keys are in scope.
   const env: NodeJS.ProcessEnv = app.isPackaged
-    ? { PORT: String(serverPort), HOST: '127.0.0.1', NODE_ENV: 'production' }
-    : { ...process.env, PORT: String(serverPort), HOST: '127.0.0.1', NODE_ENV: 'development' }
+    ? { PORT: String(serverPort), HOST: '127.0.0.1', NODE_ENV: 'production', ROUNDTABLE_AUTH_TOKEN: authToken }
+    : { ...process.env, PORT: String(serverPort), HOST: '127.0.0.1', NODE_ENV: 'development', ROUNDTABLE_AUTH_TOKEN: authToken }
 
   const storedKeys = readKeys()
   for (const [provider, encrypted] of Object.entries(storedKeys)) {
@@ -220,6 +227,7 @@ async function restartServer() {
 
 handleSync('get-server-port', () => serverPort)
 handleSync('get-app-version', () => app.getVersion())
+handleSync('get-auth-token', () => authToken)
 
 handleAsync('get-provider-status', async () => {
   const keys = readKeys()
@@ -326,10 +334,24 @@ function initAutoUpdater() {
   const feedURL = `https://update.electronjs.org/thechristobal/llm-roundtable/win32-${process.arch}/${app.getVersion()}`
   autoUpdater.setFeedURL({ url: feedURL })
   autoUpdater.on('error', err => console.warn('[autoUpdater]', err.message))
-  autoUpdater.on('update-downloaded', () => {
-    // Squirrel silently applies the staged update on the next natural app quit.
-    // No dialog, no forced restart — user sees the new version on their next launch.
-    console.log('[autoUpdater] update staged; will apply on next quit')
+  autoUpdater.on('update-downloaded', (_event, releaseNotes, releaseName) => {
+    // Prompt before applying. Without this, Squirrel silently swaps binaries
+    // on next quit — a compromised update feed could ship a malicious build
+    // with no user awareness. Explicit consent narrows the trust window to
+    // "user saw the dialog and clicked Install Now."
+    const win = BrowserWindow.getAllWindows()[0]
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'info',
+      buttons: ['Install and Restart', 'Install on Next Quit', 'Skip This Update'],
+      defaultId: 0,
+      cancelId: 2,
+      title: 'Update available',
+      message: `LLM Roundtable ${releaseName ?? ''} is ready to install.`,
+      detail: releaseNotes || 'A new version has been downloaded.',
+    })
+    if (choice === 0) autoUpdater.quitAndInstall()
+    else if (choice === 2) console.log('[autoUpdater] user skipped update; staged update remains until next check')
+    else console.log('[autoUpdater] user deferred update; will apply on next quit')
   })
   autoUpdater.checkForUpdates()
 }

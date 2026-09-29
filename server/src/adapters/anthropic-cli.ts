@@ -126,10 +126,14 @@ export async function askAnthropicViaCli(prompt: string, systemPrompt?: string):
       promptFile?.cleanup()
 
       if (code !== 0) {
+        // Truncate stderr to first line to avoid leaking local filesystem paths
+        // (Windows user-profile directories, node_modules layout) via server
+        // error responses that eventually reach the renderer.
+        const firstLine = stderr.trim().split(/\r?\n/)[0]?.slice(0, 200) || '(no stderr)'
         reject(new AdapterError({
           category: 'unknown',
           provider: 'anthropic',
-          message: `Claude Code CLI exited ${code}: ${stderr.trim() || '(no stderr)'}`,
+          message: `Claude Code CLI exited ${code}: ${firstLine}`,
         }))
         return
       }
