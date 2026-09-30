@@ -43,15 +43,9 @@ const MOCK_DIM_SCORES: Record<ProviderID, Record<DimensionKey, number>> = {
   anthropic: { reasoning: 5.8, coherence: 6.1, evidence: 5.5, honesty: 6.2 },
   google:    { reasoning: 4.2, coherence: 4.4, evidence: 4.0, honesty: 4.5 },
 }
-// MOCK_OVERALL values equal each provider's reasoning score to preserve the
-// pre-refactor wire byte-for-byte. The old suffix-parse mock had a subtle
-// misordered-condition where `${p}_overall` fell through to the first dim
-// iteration (reasoning), so overall == reasoning on the wire. Preserved
-// verbatim; snapshots pin this. A future intentional change to mock overall
-// values must update goldens deliberately.
-const MOCK_OVERALL: Record<ProviderID, number> = {
-  openai: 4.8, anthropic: 5.8, google: 4.2,
-}
+// Mock overall = mock reasoning. One number drives everything for a provider;
+// keeps the mock coherent and the wire deterministic across snapshot updates.
+const mockOverall = (p: ProviderID): number => MOCK_DIM_SCORES[p].reasoning
 // Mock noul defaults per flag. Values chosen so the pre-refactor snapshots
 // match verbatim: eqAnchor=0.7 (burden exists → NOT anchored per policy),
 // fabrication=0.1 (no fabrication), contradiction=0.1 (no contradiction).
@@ -76,7 +70,7 @@ for (const p of PROVIDERS) {
   for (const d of DIMENSIONS) {
     MOCK_SCORE_LOOKUP[dimensionKey(p, d.key as DimensionKey)] = MOCK_DIM_SCORES[p][d.key as DimensionKey]
   }
-  MOCK_SCORE_LOOKUP[finalKey(p, 'overall')] = MOCK_OVERALL[p]
+  MOCK_SCORE_LOOKUP[finalKey(p, 'overall')] = mockOverall(p)
   for (const f of FLAGS) {
     MOCK_NOUL_LOOKUP[flagKey(p, f.key as FlagKey)] = MOCK_FLAG_NOUL[f.key as FlagKey]
   }
@@ -93,7 +87,7 @@ function mockResponse(questions: Record<string, JevQuestion>): JevResponse {
       // scorecard so Verdict can never contradict what the user sees. Falls
       // back to the first non-tie option only if there are no provider opts.
       const providerOpts = opts.filter(o => o !== 'tie') as ProviderID[]
-      const scoreOf = (p: ProviderID): number => MOCK_OVERALL[p] ?? 5.5
+      const scoreOf = (p: ProviderID): number => mockOverall(p)
       const winner = providerOpts.length
         ? providerOpts.reduce((best, cur) => (scoreOf(cur) > scoreOf(best) ? cur : best))
         : opts[0]
