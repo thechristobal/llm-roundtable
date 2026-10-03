@@ -21,8 +21,10 @@ client/src/export/katex-inlined.ts
 .env
 .env.local
 .env.*.local
+.env.hosted
 **/.env
 **/.env.local
+**/.env.hosted
 
 # Logs
 *.log

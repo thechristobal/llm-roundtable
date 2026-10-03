@@ -11,8 +11,38 @@ import { importDebate } from './export/importDebate'
 import { apiBase } from './lib/api'
 import { toWireError, type Result } from './lib/apiError'
 import { buildDebateAskPayload, toDebateRound, toDebateRounds } from './lib/debatePayload'
+import { fetchDebateStream, HostedApiError, type DebateRoundWire } from './lib/hostedApi'
+import { clearBearer } from './lib/hostedAuth'
+import { isHostedMode } from './lib/hostedMode'
 import { type DebateAction, type JevFinalResult, type JevProviderRound, type JevRoundResult, type PanelState, type ProviderID, type Round } from './types'
 import type { AdapterErrorWire, AdapterProvider } from '../../shared/adapter-errors'
+
+const HOSTED = isHostedMode()
+
+function failRemaining(
+  prev: Round[],
+  roundIdx: number,
+  err: Error,
+  category: AdapterErrorWire['category'],
+): Round[] {
+  const current = prev[roundIdx]
+  if (!current) return prev
+  const panels = { ...current.panels }
+  let changed = false
+  for (const p of PROVIDER_ORDER) {
+    if (panels[p].status === 'loading') {
+      panels[p] = {
+        status: 'error',
+        error: { category, provider: p, message: err.message, retryable: false },
+      }
+      changed = true
+    }
+  }
+  if (!changed) return prev
+  const next = [...prev]
+  next[roundIdx] = { ...current, panels }
+  return next
+}
 
 const PROVIDER_ORDER: ProviderID[] = ['openai', 'anthropic', 'google']
 
@@ -164,6 +194,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (HOSTED) return // Hosted demo omits JEV — only debate orchestration is wired.
     rounds.forEach((round, i) => {
       if (judgedRoundsRef.current.has(i)) return
       const allResolved = PROVIDER_ORDER.every(id => {
@@ -209,6 +240,51 @@ export default function App() {
     el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
 
+  // Hosted-mode: one streaming call for all 3 providers. The lambda returns
+  // provider_complete events over NDJSON; we update each panel as events
+  // arrive. The Electron path (per-provider fetches) stays untouched.
+  async function runHostedRound(
+    newRoundIdx: number,
+    action: 'opening' | DebateAction,
+    priorRounds: Round[],
+    userPrompt: string,
+  ): Promise<void> {
+    const startAt = Date.now()
+    const roundsWire: DebateRoundWire[] = toDebateRounds(priorRounds)
+    try {
+      await fetchDebateStream({ action, prompt: userPrompt, rounds: roundsWire }, (evt) => {
+        if (evt.type === 'provider_complete') {
+          const provider = evt.provider
+          setRounds(prev => {
+            const next = [...prev]
+            const current = next[newRoundIdx]
+            if (!current) return prev
+            next[newRoundIdx] = {
+              ...current,
+              panels: {
+                ...current.panels,
+                [provider]: evt.ok
+                  ? { status: 'complete', content: evt.content, durationMs: Date.now() - startAt, model: evt.model }
+                  : { status: 'error', error: { ...evt.error, provider } as AdapterErrorWire },
+              },
+            }
+            return next
+          })
+        } else if (evt.type === 'error') {
+          setRounds(prev => failRemaining(prev, newRoundIdx, new Error(evt.message), evt.category as AdapterErrorWire['category']))
+        }
+      })
+      // Stream ended cleanly — mark any still-loading provider as error (lambda should always emit for each).
+      setRounds(prev => failRemaining(prev, newRoundIdx, new Error('Stream ended without response'), 'unknown'))
+    } catch (err) {
+      if (err instanceof HostedApiError && (err.status === 401 || err.status === 403)) {
+        clearBearer()
+      }
+      const message = err instanceof Error ? err.message : String(err)
+      setRounds(prev => failRemaining(prev, newRoundIdx, new Error(message), 'unknown'))
+    }
+  }
+
   async function handleSubmit() {
     const trimmed = prompt.trim()
     if (!trimmed || isSubmitting) return
@@ -225,6 +301,12 @@ export default function App() {
     }
     setRounds(prev => [...prev, newRound])
     const newRoundIdx = rounds.length
+
+    if (HOSTED) {
+      await runHostedRound(newRoundIdx, isContinuation ? 'follow_up' : 'opening', rounds, trimmed)
+      setIsSubmitting(false)
+      return
+    }
 
     await Promise.all(PROVIDER_ORDER.map(async id => {
       const start = Date.now()
@@ -261,6 +343,11 @@ export default function App() {
     const newRound: Round = { trigger: action, prompt: null, panels: { ...LOADING_PANELS } }
     setRounds(prev => [...prev, newRound])
     const newRoundIdx = rounds.length
+
+    if (HOSTED) {
+      await runHostedRound(newRoundIdx, action, rounds, '')
+      return
+    }
 
     await Promise.all(PROVIDER_ORDER.map(async id => {
       const start = Date.now()
@@ -433,21 +520,23 @@ export default function App() {
                       <ProviderPanel
                         providerId={id}
                         state={round.panels[id]}
-                        onReroll={i === rounds.length - 1 ? () => handleReroll(i, id) : undefined}
-                        suspectedFabrication={jevRounds[i]?.status === 'complete' ? (jevRounds[i].providers[id]?.suspectedFabrication ?? []) : []}
+                        onReroll={!HOSTED && i === rounds.length - 1 ? () => handleReroll(i, id) : undefined}
+                        suspectedFabrication={!HOSTED && jevRounds[i]?.status === 'complete' ? (jevRounds[i].providers[id]?.suspectedFabrication ?? []) : []}
                       />
                     </ErrorBoundary>
                   ))}
                 </div>
-                <JevRoundScores
-                  result={jevRounds[i] ?? { status: 'idle' }}
-                  userVotes={userVotes[i] ?? new Set()}
-                  onVote={(id) => setUserVotes(prev => {
-                    const current = new Set(prev[i])
-                    current.has(id) ? current.delete(id) : current.add(id)
-                    return { ...prev, [i]: current }
-                  })}
-                />
+                {!HOSTED && (
+                  <JevRoundScores
+                    result={jevRounds[i] ?? { status: 'idle' }}
+                    userVotes={userVotes[i] ?? new Set()}
+                    onVote={(id) => setUserVotes(prev => {
+                      const current = new Set(prev[i])
+                      current.has(id) ? current.delete(id) : current.add(id)
+                      return { ...prev, [i]: current }
+                    })}
+                  />
+                )}
               </section>
             ))}
             <div ref={bottomRef} />
@@ -459,11 +548,11 @@ export default function App() {
         <DebateBar
           onAction={handleDebateAction}
           disabled={isLoading}
-          onJudge={handleJudge}
+          onJudge={HOSTED ? undefined : handleJudge}
           judging={jevFinal.status === 'loading'}
         />
       )}
-      <JevPanel result={jevFinal} />
+      {!HOSTED && <JevPanel result={jevFinal} />}
 
       <footer className="px-4 pb-4 pt-2 shrink-0">
         <div className="flex gap-3 items-end bg-[#17171f] border border-[#2a2a38] rounded-xl p-3">

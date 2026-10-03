@@ -354,3 +354,33 @@ Behavior-preserving refactors driven by the `/improve-codebase-architecture` HTM
 - Typed wrappers: `handleAsync` / `handleSync` in `electron/main.ts` and `invokeAsync` / `sendSyncTyped` in `electron/preload.ts`. Drift between handler and invoker now fails tsc, not runtime.
 - `client/src/electron.d.ts` shrunk to a re-export shim so existing `import type { ClaudeCliStatus, ProviderStatus } from '../electron'` keeps working.
 - 23 type-level characterization tests (`shared/electron-ipc.test.ts`, `expectTypeOf`) pin the exact channel set and per-channel shape as of C5 — adding or omitting a channel now fails the suite.
+
+### 2026-10-02 — Hosted AWS demo scaffold (first synth-clean pass)
+
+Built the full infra for the time-boxed Vynyl hosted demo. Two stacks (`infra/cdk/`): `RoundtablePermanent` (S3 + CloudFront + SNS alarms + status/teardown Lambdas + Turnstile SSM param) and `RoundtableDemoApi` (3 Lambdas, DynamoDB rate-limit table, 3 custom resources, EventBridge Scheduler teardown).
+
+**Lambda layer (`aws-lambda/`):**
+- Middleware: `log-redact` (allowlist convention + regex safety net for sk-ant/sk-proj/sk-/AIza/Bearer/JWT patterns), `secrets` (SSM SecureString loader with cold-start cache), `auth-jwt` (jose HS256 mintSession/verifySession), `rate-limit` (DynamoDB atomic token-bucket decrement — `ADD #c :neg` + `ConditionExpression 'count > 0'`; session + IP buckets; IP pseudonymized via HMAC-SHA256(ipHashSecret, "YYYY-MM-DD|"+ip) rotating daily without a rotation Lambda), `caps` (Q25 request-shape validation + CloudFront-Viewer-Address IP extraction).
+- `strategies/openai-auth.ts`: pluggable `OpenAiAuthStrategy` with `ByoApiKeyStrategy` default (reads `X-Openai-Key`) and `ChatGptOauthStrategy` stub (throws, blocked on OpenAI app review for Sign in with ChatGPT).
+- `providers/{openai,anthropic,google}.ts`: thin wrappers that construct fresh SDK clients per request (no module-level caching — BYO key varies per request), reuse the existing `classifyXError` + `AdapterError` from `server/src/adapters/errors.ts`, support `AbortSignal` for deadline-driven cancellation.
+- `orchestrator/debate.ts`: async-generator fan-out emitting `start → interleaved provider_complete + heartbeat → done`; 110s AbortController deadline (under CloudFront's 60s origin read timeout × retries); 50 KB per-provider response byte cap enforced after generation; abort → `timeout` category instead of `unknown`.
+- `handlers/`: `health` (plain), `token-mint` (verifies Cloudflare Turnstile `siteverify` + mints 1h JWT), `debate-stream` (uses `awslambda.streamifyResponse` → NDJSON StreamEvent frames; auth → session+IP rate-limit → caps → orchestrate).
+- 24 unit tests cover redaction patterns, caps validation + IP extraction, orchestrator fan-out / missing-key / AdapterError mapping / byte truncation.
+
+**CDK (`infra/cdk/`):**
+- `PermanentStack`: static client bucket + status bucket behind one CloudFront with distinct behaviors — default `/`, `/api/*` (no caching, forwards only credential + viewer-address + content-type headers via OriginRequestPolicy, Authorization through CachePolicy headerBehavior because CloudFront disallows it in origin-request policies), `/status.json` (10s cache), `/unavailable.html`. 502/503/504 custom error responses map to `/unavailable.html` ("demo unavailable", not "demo offline" — live-origin failures also land there; `status.json` is the authoritative intentional-offline signal). Placeholder HTTP origin seeds `/api/*` until the ephemeral stack binds in.
+- `DemoApiStack`: parameters `ExpiryDays` (1-30), `ReservedConcurrency` (1-10), `ExpiryIsoAt` (UTC ISO8601, operator-set); REST API with Regional endpoint; `debate-stream` function URL in `RESPONSE_STREAM` invoke mode, integrated via API Gateway `HttpIntegration` with `Integration.ResponseTransferMode=STREAM` property override (API Gateway REST streaming is Nov 2025); DynamoDB rate-limit table (TTL on `expiresAt`); CloudWatch alarms (errors + throttles for debate/token Lambdas, DDB `UpdateItem` throttles) → permanent SNS topic; EventBridge Scheduler one-shot targeting the permanent teardown Lambda at `at(<ExpiryIsoAt>)`.
+- Three custom-resource constructs:
+  - `CfOriginBinder` (`cf-binder-on-event` + `cf-binder-is-complete`): `GetDistributionConfig → mutate /api/* origin → UpdateDistribution(IfMatch=ETag) → poll GetDistribution.Status=Deployed`. Uses the full `@aws-cdk/custom-resources` Provider framework — this is **deployment-only Step Functions plumbing** (the Provider stands up a waiter state machine for `isCompleteHandler`), not debate orchestration. On DELETE, rebinds `/api/*` back to the placeholder before CFN deletes the REST API; API Gateway stays alive until that returns, so `/api/*` never 502s during a clean teardown.
+  - `SecretRotatorCr` (`secret-rotator`): sole owner of `jwtSecret` + `ipHashSecret` SSM SecureStrings. Creates on CREATE (`PutParameter { Overwrite: false }`), preserves on UPDATE (`GetParameter` first — only writes if missing), deletes on DELETE. CDK does NOT also declare `AWS::SSM::Parameter` for these — that would create ownership ambiguity.
+  - `StatusWriterCr` (`status-writer`): invokes the permanent status-writer Lambda during ephemeral CREATE (`available: true, expiresAt`) and DELETE (`available: false, reason: 'teardown'`); same Lambda handles EventBridge-scheduled "flip to expired" 5 min before teardown.
+- All Lambdas pinned to `NODEJS_22_X` (aws-cdk-lib enum hasn't exposed NODEJS_24_X yet; Node 20 banned per the architecture plan). Pre-created `LogGroup`s with scoped IAM instead of the wildcard `AWSLambdaBasicExecutionRole` policy. ARM64 architecture.
+- `cdk synth` passes clean on both stacks: bundling produces 1.1 MB `debate-stream` (three provider SDKs + jose), 34 KB `token-mint`, 1.2 KB `health`, custom resources ~2 KB each.
+
+**Operator runbook:** `infra/cdk/README.md` — one-time prerequisites, first permanent deploy (with manual Turnstile secret set), ephemeral deploy with `ExpiryIsoAt` parameter, scheduled teardown ordering, re-enable, manual force-teardown, alarm wiring, known gotchas (CF propagation time, Node runtime pin, STREAM mode override, Turnstile secret pre-set).
+
+**Not yet done:**
+- Client-side changes to point `/api/*` at CloudFront, mint-then-use the Turnstile token, pass BYO keys via `X-*-Key` headers, parse NDJSON StreamEvents.
+- End-to-end deploy against a real AWS account — never run yet.
+- `scripts/deploy-demo.sh` helper that computes `ExpiryIsoAt` and invokes `cdk deploy`.
+- Signing/custom-domain story (currently defaults to `*.cloudfront.net`).

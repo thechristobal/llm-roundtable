@@ -1,0 +1,27 @@
+{
+  "name": "roundtable-aws-lambda",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lambda transport layer for the hosted Roundtable demo (BYO credentials, streaming debate)",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "@aws-sdk/client-dynamodb": "^3.650.0",
+    "@aws-sdk/client-ssm": "^3.650.0",
+    "@aws-sdk/lib-dynamodb": "^3.650.0",
+    "@aws-sdk/util-dynamodb": "^3.650.0",
+    "@google/generative-ai": "^0.24.1",
+    "jose": "^5.9.6",
+    "openai": "^6.49.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.0.0",
+    "typescript": "~5.6.0",
+    "vitest": "^4.1.11"
+  }
+}
