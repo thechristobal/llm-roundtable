@@ -354,3 +354,7 @@ Behavior-preserving refactors driven by the `/improve-codebase-architecture` HTM
 - Typed wrappers: `handleAsync` / `handleSync` in `electron/main.ts` and `invokeAsync` / `sendSyncTyped` in `electron/preload.ts`. Drift between handler and invoker now fails tsc, not runtime.
 - `client/src/electron.d.ts` shrunk to a re-export shim so existing `import type { ClaudeCliStatus, ProviderStatus } from '../electron'` keeps working.
 - 23 type-level characterization tests (`shared/electron-ipc.test.ts`, `expectTypeOf`) pin the exact channel set and per-channel shape as of C5 — adding or omitting a channel now fails the suite.
+
+### 2026-10-03 — Hosted AWS demo: closed, preserved on branch
+
+An AWS-hosted web demo (CDK, Lambda API, CloudFront, build-flagged hosted client mode) was designed, synthesized, and partially exercised against a real account over the preceding days. It is not shipping. The CDK stacks synth and the PermanentStack reached CloudFormation; CloudFront's new-account anti-fraud verification blocked the Distribution and the demo-api stack was never exercised end-to-end. All live AWS resources were torn down and the hosted-demo code (`infra/cdk`, `aws-lambda`, `client/src/lib/hosted*`, `client/src/components/HostedGate.tsx`, `VITE_HOSTED_MODE` wiring) was removed from `main` to keep the normal product branch free of permanently dead build-gated infrastructure. The work is preserved on branch `aws-hosted-demo-experiment` (pushed) for reference; it is not planned for pickup. The desktop Electron app remains the sole deliverable and is unchanged.
